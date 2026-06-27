@@ -55,13 +55,6 @@ async def submit_action(game_id: str, request: SubmitActionRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/{game_id}/step-ai")
-async def step_ai(game_id: str) -> dict:
-    state = _get_state(game_id)
-    message = await engine.step_ai(state)
-    return {"message": message, "state": public_state_for_human(state)}
-
-
 def _get_state(game_id: str):
     state = games.get(game_id)
     if state is None:
@@ -77,4 +70,3 @@ def _human_actor_or_none(state):
     else:
         actor = state.players[state.current_player_index]
     return actor if actor.is_human else None
-

@@ -6,6 +6,7 @@
 
 - `game_id`：游戏 ID。
 - `players`：玩家列表。
+- `ai_timeout_seconds`：AI 请求超时秒数，默认 30，合法范围 10 到 120。
 - `deck_count`：牌堆剩余数量。
 - `discard_count`：弃牌堆数量。
 - `current_player_index`：当前回合玩家在 `players` 中的索引。
@@ -84,4 +85,3 @@
 ## 为什么用字段化状态节省 token
 
 AI 决策不需要完整规则文档。后端会把规则计算成 `legal_actions`，AI 只需要知道局面摘要、自己的手牌、公开玩家信息和可选动作。这样可以减少每次请求的 token，并避免 AI 自行解释规则导致越权动作。
-

@@ -45,7 +45,12 @@ class GameEngine:
                 player.role_public = True
 
         deck = build_deck(rng)
-        state = GameState(game_id=str(uuid.uuid4()), players=players, deck=deck)
+        state = GameState(
+            game_id=str(uuid.uuid4()),
+            players=players,
+            ai_timeout_seconds=request.ai_timeout_seconds,
+            deck=deck,
+        )
         for _ in range(4):
             for player in state.players:
                 self._draw_cards(state, player, 1)
@@ -74,34 +79,28 @@ class GameEngine:
             return []
 
         actions: list[Action] = []
-        if not player.used_sha_this_turn:
-            for card in player.hand:
-                if card.name != "sha":
-                    continue
-                for target in state.players:
-                    if target.alive and target.id != player.id:
-                        actions.append(
-                            Action(
-                                action_id=f"play_sha:{card.id}:{target.id}",
-                                type="play_card",
-                                card_id=card.id,
-                                card_name="sha",
-                                target_player_id=target.id,
-                                label=f"对 {target.name} 使用杀",
-                            )
+        if not player.used_sha_this_turn and any(card.name == "sha" for card in player.hand):
+            for target in state.players:
+                if target.alive and target.id != player.id:
+                    actions.append(
+                        Action(
+                            action_id=f"play_sha:{target.id}",
+                            type="play_card",
+                            card_name="sha",
+                            target_player_id=target.id,
+                            label=f"对 {target.name} 使用杀",
                         )
-        for card in player.hand:
-            if card.name == "tao" and player.hp < player.max_hp:
-                actions.append(
-                    Action(
-                        action_id=f"play_tao:{card.id}",
-                        type="play_card",
-                        card_id=card.id,
-                        card_name="tao",
-                        target_player_id=player.id,
-                        label="使用桃回复 1 点体力",
                     )
+        if player.hp < player.max_hp and any(card.name == "tao" for card in player.hand):
+            actions.append(
+                Action(
+                    action_id="play_tao",
+                    type="play_card",
+                    card_name="tao",
+                    target_player_id=player.id,
+                    label="使用桃回复 1 点体力",
                 )
+            )
         actions.append(Action(action_id="end_phase", type="end_phase", label="结束出牌阶段"))
         return actions
 
@@ -159,7 +158,7 @@ class GameEngine:
         chosen = None
         if actor.ai_config:
             payload = compact_prompt(state, actor, legal)
-            chosen = await self.llm_client.choose_action(actor.ai_config, payload, legal)
+            chosen = await self.llm_client.choose_action(actor.ai_config, payload, legal, state.ai_timeout_seconds)
         if chosen is None:
             chosen = self._default_action_id(legal)
             self._event(state, f"{actor.name} 使用默认动作")
@@ -185,32 +184,30 @@ class GameEngine:
             return []
 
         if pending.type == "respond_shan":
-            actions = [
-                Action(
-                    action_id=f"respond_shan:{card.id}",
-                    type="respond_shan",
-                    card_id=card.id,
-                    card_name="shan",
-                    label="出闪",
+            actions = []
+            if any(card.name == "shan" for card in player.hand):
+                actions.append(
+                    Action(
+                        action_id="respond_shan",
+                        type="respond_shan",
+                        card_name="shan",
+                        label="出闪",
+                    )
                 )
-                for card in player.hand
-                if card.name == "shan"
-            ]
             actions.append(Action(action_id="pass_response", type="pass_response", label="不出闪"))
             return actions
 
         if pending.type == "dying_tao":
-            actions = [
-                Action(
-                    action_id=f"dying_tao:{card.id}",
-                    type="dying_tao",
-                    card_id=card.id,
-                    card_name="tao",
-                    label="使用桃自救",
+            actions = []
+            if any(card.name == "tao" for card in player.hand):
+                actions.append(
+                    Action(
+                        action_id="dying_tao",
+                        type="dying_tao",
+                        card_name="tao",
+                        label="使用桃自救",
+                    )
                 )
-                for card in player.hand
-                if card.name == "tao"
-            ]
             actions.append(Action(action_id="accept_death", type="accept_death", label="不使用桃"))
             return actions
 
@@ -236,7 +233,7 @@ class GameEngine:
     def _play_sha(self, state: GameState, action: Action) -> None:
         player = self.current_player(state)
         target = self._player_by_id(state, action.target_player_id or "")
-        card = self._take_card(player, action.card_id or "")
+        card = self._take_random_card_by_name(player, "sha")
         state.discard_pile.append(card)
         player.used_sha_this_turn = True
         self._event(state, f"{player.name} 对 {target.name} 使用杀")
@@ -254,7 +251,7 @@ class GameEngine:
 
     def _play_tao(self, state: GameState, action: Action) -> None:
         player = self.current_player(state)
-        card = self._take_card(player, action.card_id or "")
+        card = self._take_random_card_by_name(player, "tao")
         state.discard_pile.append(card)
         player.hp = min(player.max_hp, player.hp + 1)
         self._event(state, f"{player.name} 使用桃回复 1 点体力")
@@ -265,7 +262,7 @@ class GameEngine:
             raise ValueError("当前没有响应")
         player = self._player_by_id(state, pending.player_id)
         source = self._player_by_id(state, pending.source_player_id or "")
-        card = self._take_card(player, action.card_id or "")
+        card = self._take_random_card_by_name(player, "shan")
         state.discard_pile.append(card)
         self._event(state, f"{player.name} 打出闪，抵消了杀")
         state.current_player_index = state.players.index(source)
@@ -303,7 +300,7 @@ class GameEngine:
             raise ValueError("当前没有濒死响应")
         player = self._player_by_id(state, pending.player_id)
         source = self._player_by_id(state, pending.source_player_id or player.id)
-        card = self._take_card(player, action.card_id or "")
+        card = self._take_random_card_by_name(player, "tao")
         state.discard_pile.append(card)
         player.hp += 1
         self._event(state, f"{player.name} 使用桃脱离濒死")
@@ -422,6 +419,15 @@ class GameEngine:
                 return taken
         raise ValueError("找不到指定手牌")
 
+    def _take_random_card_by_name(self, player: Player, card_name: str) -> Card:
+        candidates = [index for index, card in enumerate(player.hand) if card.name == card_name]
+        if not candidates:
+            raise ValueError("找不到指定类型手牌")
+        index = random.choice(candidates)
+        taken = player.hand.pop(index)
+        player.hand_count = len(player.hand)
+        return taken
+
     def _player_by_id(self, state: GameState, player_id: str) -> Player:
         for player in state.players:
             if player.id == player_id:
@@ -431,4 +437,3 @@ class GameEngine:
     def _event(self, state: GameState, message: str) -> None:
         state.recent_events.append(message)
         state.recent_events = state.recent_events[-20:]
-

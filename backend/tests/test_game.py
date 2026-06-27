@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app.game.engine import GameEngine
 from app.game.state import public_state_for_human
 from app.main import app
-from app.models import AIConfig, CreateGameRequest
+from app.models import AIConfig, Card, CreateGameRequest
 
 
 def make_game(seed: int = 1):
@@ -79,6 +79,27 @@ def test_tao_only_when_damaged():
     assert any(action.card_name == "tao" for action in engine.legal_actions(state)) == has_tao
 
 
+def test_duplicate_card_actions_are_grouped():
+    engine, state = make_game()
+    force_human_play(engine, state)
+    human = state.players[0]
+    human.hand = [
+        Card(id="test-sha-1", name="sha", suit="spade", rank="7"),
+        Card(id="test-sha-2", name="sha", suit="heart", rank="8"),
+        Card(id="test-tao-1", name="tao", suit="heart", rank="9"),
+        Card(id="test-tao-2", name="tao", suit="diamond", rank="10"),
+    ]
+    human.hp = human.max_hp - 1
+
+    actions = engine.legal_actions(state)
+    sha_actions = [action for action in actions if action.card_name == "sha"]
+    tao_actions = [action for action in actions if action.card_name == "tao"]
+
+    alive_targets = [player for player in state.players if player.alive and player.id != human.id]
+    assert len(sha_actions) == len(alive_targets)
+    assert len(tao_actions) == 1
+
+
 def test_illegal_action_is_rejected():
     engine, state = make_game()
     force_human_play(engine, state)
@@ -102,6 +123,13 @@ def test_public_state_does_not_leak_ai_api_key():
     _, state = make_game()
     public = public_state_for_human(state)
     assert "api_key" not in str(public)
+
+
+def test_public_state_reveals_all_roles_after_game_over():
+    _, state = make_game()
+    state.winner = "fan"
+    public = public_state_for_human(state)
+    assert all(player["role"] != "unknown" for player in public["players"])
 
 
 def test_health_api():

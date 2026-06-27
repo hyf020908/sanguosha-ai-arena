@@ -17,10 +17,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function createGame(humanName: string, aiPlayers: AIConfig[]): Promise<CreateGameResponse> {
+export async function createGame(
+  humanName: string,
+  aiPlayers: AIConfig[],
+  aiTimeoutSeconds: number
+): Promise<CreateGameResponse> {
   return request<CreateGameResponse>('/api/games', {
     method: 'POST',
-    body: JSON.stringify({ human_name: humanName, ai_players: aiPlayers })
+    body: JSON.stringify({
+      human_name: humanName,
+      ai_players: aiPlayers,
+      ai_timeout_seconds: aiTimeoutSeconds
+    })
   });
 }
 
@@ -34,10 +42,3 @@ export async function submitAction(gameId: string, actionId: string): Promise<Ga
     body: JSON.stringify({ action_id: actionId })
   });
 }
-
-export async function stepAi(gameId: string): Promise<{ message: string; state: GameState }> {
-  return request<{ message: string; state: GameState }>(`/api/games/${gameId}/step-ai`, {
-    method: 'POST'
-  });
-}
-

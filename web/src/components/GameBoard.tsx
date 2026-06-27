@@ -8,7 +8,6 @@ interface Props {
   state: GameState;
   loading: boolean;
   onAction: (actionId: string) => Promise<void>;
-  onStepAi: () => Promise<void>;
   onNewGame: () => void;
 }
 
@@ -25,7 +24,7 @@ const winnerLabels: Record<string, string> = {
   fan: '反贼胜利'
 };
 
-export function GameBoard({ state, loading, onAction, onStepAi, onNewGame }: Props) {
+export function GameBoard({ state, loading, onAction, onNewGame }: Props) {
   const human = state.players.find((player) => player.is_human);
   const current = state.players[state.current_player_index];
 
@@ -49,11 +48,10 @@ export function GameBoard({ state, loading, onAction, onStepAi, onNewGame }: Pro
       <div className="board-columns">
         <div>
           <HandCards cards={human?.hand ?? []} />
-          <ActionPanel actions={state.legal_actions} loading={loading} onAction={onAction} onStepAi={onStepAi} />
+          <ActionPanel actions={state.legal_actions} loading={loading} onAction={onAction} />
         </div>
         <EventLog events={state.recent_events} />
       </div>
     </main>
   );
 }
-

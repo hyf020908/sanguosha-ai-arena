@@ -7,7 +7,7 @@
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+./.venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
 ## API
@@ -17,7 +17,6 @@ uvicorn app.main:app --reload --port 8000
 - `GET /api/games/{game_id}`：获取脱敏状态。
 - `GET /api/games/{game_id}/legal-actions`：获取当前人类可执行动作。
 - `POST /api/games/{game_id}/actions`：提交人类动作。
-- `POST /api/games/{game_id}/step-ai`：调试用，推进 AI 一步。
 
 ## 测试
 
@@ -33,4 +32,4 @@ pytest
 - 状态接口不返回 AI `api_key`。
 - 状态接口不返回其他玩家手牌。
 - 正常创建游戏不传 seed，身份和牌堆都会随机化。
-
+- 创建游戏可配置 AI 请求超时秒数，合法范围为 10 到 120，非法值按 30 处理。

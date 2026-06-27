@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createGame, stepAi, submitAction } from './api/client';
+import { createGame, submitAction } from './api/client';
 import { GameBoard } from './components/GameBoard';
 import { GameSetup } from './components/GameSetup';
 import type { AIConfig, GameState } from './types';
@@ -23,8 +23,8 @@ export default function App() {
     }
   }
 
-  async function handleCreate(humanName: string, aiPlayers: AIConfig[]) {
-    const result = await run(() => createGame(humanName, aiPlayers));
+  async function handleCreate(humanName: string, aiPlayers: AIConfig[], aiTimeoutSeconds: number) {
+    const result = await run(() => createGame(humanName, aiPlayers, aiTimeoutSeconds));
     if (result) {
       setGameId(result.game_id);
       setState(result.state);
@@ -41,16 +41,6 @@ export default function App() {
     }
   }
 
-  async function handleStepAi() {
-    if (!gameId) {
-      return;
-    }
-    const result = await run(() => stepAi(gameId));
-    if (result) {
-      setState(result.state);
-    }
-  }
-
   return (
     <div className="app-root">
       {error ? <div className="error-banner">{error}</div> : null}
@@ -59,7 +49,6 @@ export default function App() {
           state={state}
           loading={loading}
           onAction={handleAction}
-          onStepAi={handleStepAi}
           onNewGame={() => {
             setGameId(null);
             setState(null);
@@ -71,4 +60,3 @@ export default function App() {
     </div>
   );
 }
-

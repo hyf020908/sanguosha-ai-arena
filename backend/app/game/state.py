@@ -9,7 +9,7 @@ def public_state_for_human(state: GameState) -> dict:
 
     players: list[dict] = []
     for player in state.players:
-        role_visible = player.role_public or player.id == human_id
+        role_visible = bool(state.winner) or player.role_public or player.id == human_id
         players.append(
             {
                 "id": player.id,

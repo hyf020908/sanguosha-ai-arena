@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 Role = Literal["zhu", "zhong", "fan", "nei"]
@@ -61,6 +61,7 @@ class Player(BaseModel):
 class GameState(BaseModel):
     game_id: str
     players: list[Player]
+    ai_timeout_seconds: int = 30
     deck: list[Card] = Field(default_factory=list)
     discard_pile: list[Card] = Field(default_factory=list)
     current_player_index: int = 0
@@ -83,9 +84,20 @@ class GameState(BaseModel):
 class CreateGameRequest(BaseModel):
     human_name: str = "Human"
     ai_players: list[AIConfig]
+    ai_timeout_seconds: int = 30
     seed: int | None = None
+
+    @field_validator("ai_timeout_seconds", mode="before")
+    @classmethod
+    def validate_ai_timeout_seconds(cls, value: object) -> int:
+        try:
+            if isinstance(value, bool):
+                return 30
+            timeout = int(float(value)) if value is not None else 30
+        except (TypeError, ValueError):
+            return 30
+        return timeout if 10 <= timeout <= 120 else 30
 
 
 class SubmitActionRequest(BaseModel):
     action_id: str
-

@@ -4,10 +4,9 @@ interface Props {
   actions: Action[];
   loading: boolean;
   onAction: (actionId: string) => Promise<void>;
-  onStepAi: () => Promise<void>;
 }
 
-export function ActionPanel({ actions, loading, onAction, onStepAi }: Props) {
+export function ActionPanel({ actions, loading, onAction }: Props) {
   return (
     <section className="panel-section">
       <div className="section-title">可执行动作</div>
@@ -19,10 +18,6 @@ export function ActionPanel({ actions, loading, onAction, onStepAi }: Props) {
           </button>
         ))}
       </div>
-      <button className="secondary-button" disabled={loading} onClick={onStepAi}>
-        调试：推进 AI 一步
-      </button>
     </section>
   );
 }
-

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { AIConfig } from '../types';
 
 interface Props {
-  onCreate: (humanName: string, aiPlayers: AIConfig[]) => Promise<void>;
+  onCreate: (humanName: string, aiPlayers: AIConfig[], aiTimeoutSeconds: number) => Promise<void>;
   loading: boolean;
 }
 
@@ -17,6 +17,7 @@ const defaultAi = (index: number): AIConfig => ({
 export function GameSetup({ onCreate, loading }: Props) {
   const [humanName, setHumanName] = useState('Human');
   const [aiCount, setAiCount] = useState(3);
+  const [aiTimeoutSeconds, setAiTimeoutSeconds] = useState('30');
   const [aiPlayers, setAiPlayers] = useState<AIConfig[]>([defaultAi(0), defaultAi(1), defaultAi(2)]);
 
   const visibleAiPlayers = useMemo(() => aiPlayers.slice(0, aiCount), [aiPlayers, aiCount]);
@@ -35,6 +36,11 @@ export function GameSetup({ onCreate, loading }: Props) {
 
   function updateAi(index: number, patch: Partial<AIConfig>) {
     setAiPlayers((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  }
+
+  function normalizedAiTimeoutSeconds() {
+    const parsed = Number(aiTimeoutSeconds);
+    return Number.isFinite(parsed) && parsed >= 10 && parsed <= 120 ? Math.trunc(parsed) : 30;
   }
 
   return (
@@ -61,7 +67,23 @@ export function GameSetup({ onCreate, loading }: Props) {
               ))}
             </select>
           </label>
-          <button className="primary-button" disabled={loading} onClick={() => onCreate(humanName, visibleAiPlayers)}>
+          <label>
+            AI 请求超时秒数
+            <input
+              type="number"
+              min="10"
+              max="120"
+              step="1"
+              value={aiTimeoutSeconds}
+              onChange={(event) => setAiTimeoutSeconds(event.target.value)}
+              onBlur={() => setAiTimeoutSeconds(String(normalizedAiTimeoutSeconds()))}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={loading}
+            onClick={() => onCreate(humanName, visibleAiPlayers, normalizedAiTimeoutSeconds())}
+          >
             {loading ? '创建中...' : '创建新游戏'}
           </button>
         </div>
@@ -108,4 +130,3 @@ export function GameSetup({ onCreate, loading }: Props) {
     </section>
   );
 }
-
