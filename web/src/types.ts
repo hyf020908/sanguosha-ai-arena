@@ -24,6 +24,7 @@ export interface Action {
   card_name?: CardName | null;
   target_player_id?: string | null;
   target_card_ids?: string[] | null;
+  target_card_names?: CardName[] | null;
   label: string;
 }
 
@@ -67,4 +68,3 @@ export interface CreateGameResponse {
   game_id: string;
   state: GameState;
 }
-

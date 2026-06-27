@@ -32,6 +32,7 @@ class Action(BaseModel):
     card_name: CardName | None = None
     target_player_id: str | None = None
     target_card_ids: list[str] | None = None
+    target_card_names: list[CardName] | None = None
     label: str
 
 

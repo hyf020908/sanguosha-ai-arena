@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
-from itertools import combinations
+from collections import Counter
 
 from app.game.deck import build_deck
 from app.game.rules import CARD_LABELS, ROLE_SETS
@@ -151,7 +151,7 @@ class GameEngine:
         if actor.is_human:
             return "当前等待人类玩家操作"
 
-        legal = state.legal_actions
+        legal = self.ai_legal_actions(state, actor, state.legal_actions)
         if not legal:
             return "当前没有合法动作"
 
@@ -164,6 +164,13 @@ class GameEngine:
             self._event(state, f"{actor.name} 使用默认动作")
         self.execute_action(state, chosen)
         return f"{actor.name} 执行 {chosen}"
+
+    def ai_legal_actions(self, state: GameState, actor: Player, legal_actions: list[Action]) -> list[Action]:
+        filtered = [action for action in legal_actions if self._ai_action_allowed_by_role(state, actor, action)]
+        if not filtered:
+            filtered = [action for action in legal_actions if action.type != "play_card" or action.card_name != "sha"]
+        preferred = self._ai_preferred_actions(state, actor, filtered)
+        return preferred or filtered
 
     def start_turn(self, state: GameState) -> None:
         player = self.current_player(state)
@@ -216,14 +223,13 @@ class GameEngine:
             if required <= 0:
                 return [Action(action_id="discard:none", type="discard_cards", target_card_ids=[], label="无需弃牌")]
             actions: list[Action] = []
-            for combo in combinations(player.hand, required):
-                ids = [card.id for card in combo]
-                names = "、".join(CARD_LABELS[card.name] for card in combo)
+            for combo in self._discard_name_combinations(player, required):
+                names = "、".join(CARD_LABELS[name] for name in combo)
                 actions.append(
                     Action(
-                        action_id=f"discard:{','.join(ids)}",
+                        action_id=f"discard:{','.join(combo)}",
                         type="discard_cards",
-                        target_card_ids=ids,
+                        target_card_names=list(combo),
                         label=f"弃置 {names}",
                     )
                 )
@@ -341,9 +347,16 @@ class GameEngine:
         if pending is None:
             raise ValueError("当前没有弃牌要求")
         player = self._player_by_id(state, pending.player_id)
-        for card_id in action.target_card_ids or []:
-            state.discard_pile.append(self._take_card(player, card_id))
-        self._event(state, f"{player.name} 弃置了 {len(action.target_card_ids or [])} 张牌")
+        discarded = 0
+        if action.target_card_names:
+            for card_name in action.target_card_names:
+                state.discard_pile.append(self._take_random_card_by_name(player, card_name))
+                discarded += 1
+        else:
+            for card_id in action.target_card_ids or []:
+                state.discard_pile.append(self._take_card(player, card_id))
+                discarded += 1
+        self._event(state, f"{player.name} 弃置了 {discarded} 张牌")
         state.pending_response = None
         self._advance_to_next_player(state)
         self.start_turn(state)
@@ -382,6 +395,65 @@ class GameEngine:
             if action.type == "discard_cards":
                 return action.action_id
         return legal[0].action_id
+
+    def _ai_action_allowed_by_role(self, state: GameState, actor: Player, action: Action) -> bool:
+        if action.type != "play_card" or action.card_name != "sha":
+            return True
+        target = self._player_by_id(state, action.target_player_id or "")
+        if actor.role == "zhong":
+            return target.role != "zhu"
+        return True
+
+    def _ai_preferred_actions(self, state: GameState, actor: Player, actions: list[Action]) -> list[Action]:
+        if state.pending_response:
+            if state.pending_response.type == "respond_shan":
+                return [action for action in actions if action.type == "respond_shan"] or actions
+            if state.pending_response.type == "dying_tao":
+                return [action for action in actions if action.type == "dying_tao"] or actions
+            return actions
+
+        if state.phase != "play":
+            return actions
+
+        tao_actions = [action for action in actions if action.type == "play_card" and action.card_name == "tao"]
+        if actor.hp <= 2 and tao_actions:
+            return tao_actions
+
+        sha_actions = [action for action in actions if action.type == "play_card" and action.card_name == "sha"]
+        if not sha_actions:
+            return tao_actions or actions
+
+        if actor.role == "fan":
+            lord_actions = [
+                action
+                for action in sha_actions
+                if self._player_by_id(state, action.target_player_id or "").role_public
+                and self._player_by_id(state, action.target_player_id or "").role == "zhu"
+            ]
+            if lord_actions:
+                return lord_actions
+        return sha_actions
+
+    def _discard_name_combinations(self, player: Player, required: int) -> list[tuple[str, ...]]:
+        counts = Counter(card.name for card in player.hand)
+        names = sorted(counts, key=lambda name: CARD_LABELS[name])
+        results: list[tuple[str, ...]] = []
+
+        def visit(index: int, remaining: int, current: list[str]) -> None:
+            if index == len(names):
+                if remaining == 0:
+                    results.append(tuple(current))
+                return
+            name = names[index]
+            max_count = min(counts[name], remaining)
+            for count in range(max_count + 1):
+                current.extend([name] * count)
+                visit(index + 1, remaining - count, current)
+                if count:
+                    del current[-count:]
+
+        visit(0, required, [])
+        return results
 
     def _advance_to_next_player(self, state: GameState) -> None:
         previous = state.current_player_index
