@@ -63,15 +63,24 @@ class Action(BaseModel):
     type: str
     card_id: str | None = None
     card_name: CardName | None = None
+    card_suit: str | None = None
+    card_rank: str | None = None
     target_player_id: str | None = None
+    target_player_name: str | None = None
     secondary_target_player_id: str | None = None
+    secondary_target_player_name: str | None = None
     target_card_ids: list[str] | None = None
     target_card_names: list[CardName] | None = None
+    selected_area: str | None = None
+    selected_card_id: str | None = None
+    selected_card_name: CardName | None = None
+    selected_card_suit: str | None = None
+    selected_card_rank: str | None = None
     label: str
 
 
 class PendingResponse(BaseModel):
-    type: Literal["respond_shan", "respond_sha", "dying_tao", "discard", "wuxie"]
+    type: Literal["respond_shan", "respond_sha", "dying_tao", "discard", "wuxie", "wugu"]
     player_id: str
     source_player_id: str | None = None
     origin_player_id: str | None = None
@@ -79,12 +88,19 @@ class PendingResponse(BaseModel):
     secondary_target_player_id: str | None = None
     card_id: str | None = None
     card_name: CardName | None = None
+    card_suit: str | None = None
+    card_rank: str | None = None
+    pending_card: Card | None = None
     effect_type: str | None = None
     target_player_ids: list[str] | None = None
     remaining_player_ids: list[str] | None = None
     queue_player_ids: list[str] | None = None
     responded_player_ids: list[str] | None = None
     required_count: int | None = None
+    selected_area: str | None = None
+    selected_card_id: str | None = None
+    wuxie_effect_cancelled: bool = False
+    wugu_pool: list[Card] | None = None
 
 
 class Equipment(BaseModel):

@@ -1,5 +1,5 @@
 import type { GameState, Player, Role } from '../types';
-import { cardLabels } from '../cardLabels';
+import { formatCard } from '../cardLabels';
 
 const roleLabels: Record<Role, string> = {
   zhu: '主公',
@@ -40,12 +40,12 @@ function PlayerCard({ player, active }: { player: Player; active: boolean }) {
         <span>手牌 {player.hand_count}</span>
       </div>
       <div className="zone-row">
-        {player.equipment.weapon ? <span>武器 {cardLabels[player.equipment.weapon.name]}</span> : null}
-        {player.equipment.armor ? <span>防具 {cardLabels[player.equipment.armor.name]}</span> : null}
-        {player.equipment.attack_horse ? <span>-1 {cardLabels[player.equipment.attack_horse.name]}</span> : null}
-        {player.equipment.defense_horse ? <span>+1 {cardLabels[player.equipment.defense_horse.name]}</span> : null}
+        {player.equipment.weapon ? <span>武器 {formatCard(player.equipment.weapon)}</span> : null}
+        {player.equipment.armor ? <span>防具 {formatCard(player.equipment.armor)}</span> : null}
+        {player.equipment.attack_horse ? <span>-1 {formatCard(player.equipment.attack_horse)}</span> : null}
+        {player.equipment.defense_horse ? <span>+1 {formatCard(player.equipment.defense_horse)}</span> : null}
         {player.judgment_area.map((card) => (
-          <span key={card.id}>判定 {cardLabels[card.name]}</span>
+          <span key={card.id}>判定 {formatCard(card)}</span>
         ))}
       </div>
     </article>

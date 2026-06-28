@@ -14,17 +14,19 @@ system prompt 会要求模型：
 - 后端会按策略分数优先提供高收益动作：保命响应、杀、决斗、拆顺、借刀、装备和其它锦囊会排在结束阶段之前。
 - Prompt 会额外提供 `aggressive_strategy`，明确要求 AI 不要保守，能推进身份目标时主动行动。
 - 遇到 `respond_shan`、`respond_sha`、`dying_tao`、`wuxie` 等响应时，只能在后端列出的响应动作中选择。
+- 所有使用、响应、装备和弃牌动作都绑定具体 `card_id`；同名牌不能混用，必须选择对应 action_id。
+- 无懈可击支持链式反制，五谷丰登使用公共牌池逐人选择；AI 不需要自行结算，只需从当前 `legal_actions` 选择。
 - 返回严格 JSON。
 
 user prompt 是紧凑 JSON，包含：
 
-- `you`：当前 AI 的身份、体力和手牌摘要。
+- `you`：当前 AI 的身份、体力和手牌摘要，包含自己手牌的 `id`、`name`、`suit`、`rank`。
 - `public_players`：公开玩家信息、体力、手牌数、装备区、判定区。
 - `phase`：当前阶段。
 - `pending_response`：当前响应上下文。
 - `recent_events`：最近事件。
 - `distances`：全员公开距离、攻击范围和是否可攻击。
-- `legal_actions`：后端生成的合法动作列表。
+- `legal_actions`：后端生成的合法动作列表，包含 `card_id`、`card_name`、`card_suit`、`card_rank`、目标名称、拆顺选择区域、公开选择牌等结构化信息。
 - `card_labels`：牌名映射。
 - `card_rules`：v0.2 已实现牌型规则摘要。
 - `objective_hint`：身份目标提示。
@@ -33,7 +35,7 @@ user prompt 是紧凑 JSON，包含：
 
 ## AI 只能选择 legal_actions
 
-AI 返回的 `action_id` 必须存在于 `legal_actions`。后端执行动作前会再次校验。如果 AI 输出了不存在的动作，后端会重试一次；仍然失败则执行默认动作。
+AI 返回的 `action_id` 必须存在于 `legal_actions`。后端执行动作前会再次校验。如果 AI 输出了不存在的动作，后端会重试一次；仍然失败则执行默认动作。AI 不能只说“出杀”或“使用桃”，必须返回某个包含具体牌 ID 的合法动作，例如 `respond_sha:c33` 或 `play_tao:c71:p2`。
 
 前端也只展示后端返回给人类玩家的 `legal_actions`，因此“不允许出的牌”不会出现在按钮区。
 
@@ -73,8 +75,8 @@ AI 必须返回严格 JSON：
     "hp": 3,
     "max_hp": 4,
     "hand": [
-      { "id": "c12", "name": "sha" },
-      { "id": "c18", "name": "wuxiekeji" }
+      { "id": "c12", "name": "sha", "suit": "spade", "rank": "7" },
+      { "id": "c18", "name": "wuxiekeji", "suit": "club", "rank": "Q" }
     ]
   },
   "public_players": [
@@ -94,7 +96,16 @@ AI 必须返回严格 JSON：
   "pending_response": null,
   "recent_events": ["Human 结束回合"],
   "legal_actions": [
-    { "action_id": "play_sha:p0", "type": "play_card", "card_name": "sha", "target_player_id": "p0" },
+    {
+      "action_id": "play_sha:c12:p0",
+      "type": "play_card",
+      "card_id": "c12",
+      "card_name": "sha",
+      "card_suit": "spade",
+      "card_rank": "7",
+      "target_player_id": "p0",
+      "target_player_name": "Human"
+    },
     { "action_id": "end_phase", "type": "end_phase" }
   ],
   "card_rules": {
@@ -110,7 +121,7 @@ AI 必须返回严格 JSON：
 
 ```json
 {
-  "action_id": "play_sha:p0",
+  "action_id": "play_sha:c12:p0",
   "reason": "反贼优先压低主公体力"
 }
 ```

@@ -4,6 +4,7 @@ import { DistancePanel } from './DistancePanel';
 import { EventLog } from './EventLog';
 import { HandCards } from './HandCards';
 import { PlayerPanel } from './PlayerPanel';
+import { formatCard, suitColorClass } from '../cardLabels';
 
 interface Props {
   state: GameState;
@@ -23,7 +24,8 @@ const phaseLabels: Record<GameState['phase'], string> = {
 
 const winnerLabels: Record<string, string> = {
   zhu: '主公阵营胜利',
-  fan: '反贼胜利'
+  fan: '反贼胜利',
+  nei: '内奸胜利'
 };
 
 export function GameBoard({ state, loading, onAction, onNewGame }: Props) {
@@ -50,6 +52,18 @@ export function GameBoard({ state, loading, onAction, onNewGame }: Props) {
       <div className="board-columns">
         <div>
           <HandCards cards={human?.hand ?? []} />
+          {state.pending_response?.type === 'wugu' ? (
+            <section className="panel-section">
+              <div className="section-title">五谷丰登公共牌池</div>
+              <div className="wugu-pool">
+                {(state.pending_response.wugu_pool ?? []).map((card) => (
+                  <span className={`pool-card ${suitColorClass(card.suit)}`} key={card.id}>
+                    {formatCard(card)}
+                  </span>
+                ))}
+              </div>
+            </section>
+          ) : null}
           <DistancePanel state={state} />
           <ActionPanel actions={state.legal_actions} loading={loading} onAction={onAction} />
         </div>

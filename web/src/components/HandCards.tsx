@@ -1,5 +1,5 @@
 import type { Card } from '../types';
-import { cardLabels } from '../cardLabels';
+import { cardLabels, suitColorClass, suitIcon } from '../cardLabels';
 
 export function HandCards({ cards }: { cards: Card[] }) {
   return (
@@ -10,8 +10,8 @@ export function HandCards({ cards }: { cards: Card[] }) {
         {cards.map((card) => (
           <div className={`hand-card ${card.name}`} key={card.id}>
             <strong>{cardLabels[card.name]}</strong>
-            <span>
-              {card.suit} {card.rank}
+            <span className={suitColorClass(card.suit)}>
+              {suitIcon(card.suit)} {card.rank}
             </span>
           </div>
         ))}

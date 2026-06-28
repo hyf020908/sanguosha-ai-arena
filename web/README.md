@@ -23,5 +23,6 @@ VITE_API_BASE_URL=http://localhost:8000 npm run dev
 - 点击动作时提交 `action_id`。
 - 显示 API 错误。
 - 展示 v0.2 公开装备区和判定区。
+- 使用中文牌名、花色图标和点数展示手牌、装备区、判定区、动作按钮和五谷丰登公共牌池。
 
 前端不判断动作是否合法，也不推演规则；按钮区只渲染后端返回的 `legal_actions`。

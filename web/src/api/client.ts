@@ -42,3 +42,7 @@ export async function submitAction(gameId: string, actionId: string): Promise<Ga
     body: JSON.stringify({ action_id: actionId })
   });
 }
+
+export function gameStreamUrl(gameId: string): string {
+  return `${API_BASE}/api/games/${gameId}/stream`;
+}

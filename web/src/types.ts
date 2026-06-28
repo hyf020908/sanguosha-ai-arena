@@ -54,15 +54,24 @@ export interface Action {
   type: string;
   card_id?: string | null;
   card_name?: CardName | null;
+  card_suit?: string | null;
+  card_rank?: string | null;
   target_player_id?: string | null;
+  target_player_name?: string | null;
   secondary_target_player_id?: string | null;
+  secondary_target_player_name?: string | null;
   target_card_ids?: string[] | null;
   target_card_names?: CardName[] | null;
+  selected_area?: string | null;
+  selected_card_id?: string | null;
+  selected_card_name?: CardName | null;
+  selected_card_suit?: string | null;
+  selected_card_rank?: string | null;
   label: string;
 }
 
 export interface PendingResponse {
-  type: 'respond_shan' | 'respond_sha' | 'dying_tao' | 'discard' | 'wuxie';
+  type: 'respond_shan' | 'respond_sha' | 'dying_tao' | 'discard' | 'wuxie' | 'wugu';
   player_id: string;
   source_player_id?: string | null;
   origin_player_id?: string | null;
@@ -70,12 +79,19 @@ export interface PendingResponse {
   secondary_target_player_id?: string | null;
   card_id?: string | null;
   card_name?: CardName | null;
+  card_suit?: string | null;
+  card_rank?: string | null;
+  pending_card?: Card | null;
   effect_type?: string | null;
   target_player_ids?: string[] | null;
   remaining_player_ids?: string[] | null;
   queue_player_ids?: string[] | null;
   responded_player_ids?: string[] | null;
   required_count?: number | null;
+  selected_area?: string | null;
+  selected_card_id?: string | null;
+  wuxie_effect_cancelled?: boolean | null;
+  wugu_pool?: Card[] | null;
 }
 
 export interface Equipment {

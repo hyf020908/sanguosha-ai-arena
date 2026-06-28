@@ -1,4 +1,5 @@
 import type { Action } from '../types';
+import { renderActionLabel } from '../cardLabels';
 
 interface Props {
   actions: Action[];
@@ -13,8 +14,8 @@ export function ActionPanel({ actions, loading, onAction }: Props) {
       <div className="actions-row">
         {actions.length === 0 ? <p className="muted">当前没有人类可执行动作。</p> : null}
         {actions.map((action) => (
-          <button key={action.action_id} disabled={loading} onClick={() => onAction(action.action_id)}>
-            {action.label}
+          <button className={`action-button action-${action.type}`} key={action.action_id} disabled={loading} onClick={() => onAction(action.action_id)}>
+            {renderActionLabel(action)}
           </button>
         ))}
       </div>

@@ -28,13 +28,14 @@ const statusWords = ['受到', '伤害', '濒死', '死亡', '胜利', '未出',
 export function EventLog({ events, players }: Props) {
   const playerNames = players.map((player) => player.name);
   const cardNames = Object.values(cardLabels);
+  const displayEvents = [...events].reverse();
 
   return (
     <section className="panel-section event-panel">
       <div className="section-title">最近事件</div>
       <ol className="event-log">
-        {events.length === 0 ? <li className="muted">暂无事件</li> : null}
-        {events.map((event, index) => (
+        {displayEvents.length === 0 ? <li className="muted">暂无事件</li> : null}
+        {displayEvents.map((event, index) => (
           <li key={`${event}-${index}`} className={eventClass(event)}>
             <span className="event-index">{String(index + 1).padStart(2, '0')}</span>
             <span className="event-text">{renderEvent(event, playerNames, cardNames)}</span>

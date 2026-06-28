@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { createGame, submitAction } from './api/client';
+import { useEffect, useState } from 'react';
+import { createGame, gameStreamUrl, submitAction } from './api/client';
 import { GameBoard } from './components/GameBoard';
 import { GameSetup } from './components/GameSetup';
 import type { AIConfig, GameState } from './types';
@@ -9,6 +9,26 @@ export default function App() {
   const [state, setState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!gameId) {
+      return undefined;
+    }
+    const source = new EventSource(gameStreamUrl(gameId));
+    source.addEventListener('state', (event) => {
+      try {
+        setState(JSON.parse((event as MessageEvent).data) as GameState);
+      } catch {
+        setError('实时状态解析失败');
+      }
+    });
+    source.onerror = () => {
+      setError('实时状态连接中断，仍可手动操作刷新');
+    };
+    return () => {
+      source.close();
+    };
+  }, [gameId]);
 
   async function run<T>(task: () => Promise<T>): Promise<T | null> {
     setLoading(true);

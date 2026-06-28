@@ -14,7 +14,7 @@
 - `pending_response`：待响应状态，没有待响应时为 `null`。
 - `round`：轮数。
 - `recent_events`：最近事件，最多保留 30 条。
-- `winner`：胜利方，可能是 `zhu`、`fan` 或 `null`。
+- `winner`：胜利方，可能是 `zhu`、`fan`、`nei` 或 `null`。
 - `distances`：公开距离矩阵，包含来源、目标、距离、来源攻击范围、目标是否在攻击范围内。
 - `legal_actions`：当前人类玩家可执行动作；如果不是人类操作时机，返回空数组。
 
@@ -47,21 +47,28 @@
 
 ## Action 字段
 
-- `action_id`：动作 ID。前端和 AI 必须提交这个字段。
-- `type`：动作类型，例如 `play_card`、`equip_card`、`respond_shan`、`respond_sha`、`wuxie`、`discard_cards`。
-- `card_id`：相关牌 ID，可为空。
+- `action_id`：动作 ID。前端和 AI 必须提交这个字段。出牌、响应、装备、弃牌动作通常包含具体 `card_id`，例如 `play_sha:c17:p0`、`respond_shan:c51`、`discard:c1,c2`。
+- `type`：动作类型，例如 `play_card`、`equip_card`、`respond_shan`、`respond_sha`、`wuxie`、`dying_tao`、`wugu_choose`、`discard_cards`。
+- `card_id`：相关具体牌 ID，可为空。
 - `card_name`：相关牌名，可为空。
+- `card_suit`：相关牌花色，可为空。
+- `card_rank`：相关牌点数，可为空。
 - `target_player_id`：目标玩家 ID，可为空。
+- `target_player_name`：目标玩家名称，可为空。
 - `secondary_target_player_id`：借刀杀人等动作的第二目标，可为空。
+- `secondary_target_player_name`：第二目标玩家名称，可为空。
 - `target_card_ids`：弃牌等动作涉及的多张牌 ID，可为空。
-- `target_card_names`：按牌名分组的弃牌动作，可为空。
+- `target_card_names`：兼容字段；当前弃牌动作以 `target_card_ids` 为准。
+- `selected_area`：拆/顺等动作选择的目标区域，可能是 `hand`、`equipment`、`judgment`。
+- `selected_card_id`：选择公开装备区或判定区牌时的具体牌 ID；选择随机手牌时为空。
+- `selected_card_name`、`selected_card_suit`、`selected_card_rank`：公开被选择牌的牌名、花色、点数；随机手牌不会暴露这些字段。
 - `label`：前端显示文本。
 
-后端会校验 `action_id` 是否存在于当前 `legal_actions`，不存在则拒绝执行。
+后端会校验 `action_id` 是否存在于当前 `legal_actions`，不存在则拒绝执行。前端可以使用结构化字段自行格式化展示文本，但不能自行推断或新增规则动作。
 
 ## PendingResponse 字段
 
-- `type`：响应类型，可能是 `respond_shan`、`respond_sha`、`dying_tao`、`discard`、`wuxie`。
+- `type`：响应类型，可能是 `respond_shan`、`respond_sha`、`dying_tao`、`discard`、`wuxie`、`wugu`。
 - `player_id`：需要响应的玩家 ID。
 - `source_player_id`：来源玩家 ID，可为空。
 - `origin_player_id`：原始出牌玩家 ID，可为空。
@@ -69,12 +76,18 @@
 - `secondary_target_player_id`：第二目标玩家 ID，可为空。
 - `card_id`：相关牌 ID，可为空。
 - `card_name`：相关牌名，可为空。
+- `card_suit`：相关牌花色，可为空。
+- `card_rank`：相关牌点数，可为空。
+- `pending_card`：延时锦囊等待无懈结算时暂存的具体牌，可为空。
 - `effect_type`：当前结算效果类型，可为空。
 - `target_player_ids`：多目标效果的目标列表，可为空。
 - `remaining_player_ids`：多目标效果剩余目标列表，可为空。
 - `queue_player_ids`：求桃、无懈可击等响应队列，可为空。
 - `responded_player_ids`：已响应过的玩家列表，可为空。
 - `required_count`：需要弃置的数量，可为空。
+- `selected_area`、`selected_card_id`：拆/顺等锦囊效果待结算时保留的目标区域和目标公开牌 ID。
+- `wuxie_effect_cancelled`：无懈链当前最终状态，`true` 表示原锦囊将被抵消，`false` 表示原锦囊继续生效。
+- `wugu_pool`：五谷丰登公共牌池，`type = "wugu"` 时公开给前端和 AI。
 
 ## DistanceInfo 字段
 

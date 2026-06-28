@@ -30,6 +30,34 @@ def force_human_play(engine: GameEngine, state):
     engine.refresh_legal_actions(state)
 
 
+def action_id(
+    engine: GameEngine,
+    state,
+    *,
+    card_name: str | None = None,
+    action_type: str | None = None,
+    target_id: str | None = None,
+    secondary_target_id: str | None = None,
+    selected_area: str | None = None,
+    selected_card_id: str | None = None,
+) -> str:
+    for action in engine.refresh_legal_actions(state):
+        if card_name is not None and action.card_name != card_name:
+            continue
+        if action_type is not None and action.type != action_type:
+            continue
+        if target_id is not None and action.target_player_id != target_id:
+            continue
+        if secondary_target_id is not None and action.secondary_target_player_id != secondary_target_id:
+            continue
+        if selected_area is not None and action.selected_area != selected_area:
+            continue
+        if selected_card_id is not None and action.selected_card_id != selected_card_id:
+            continue
+        return action.action_id
+    raise AssertionError("未找到指定合法动作")
+
+
 def test_create_game_success():
     _, state = make_game()
     assert state.game_id
@@ -104,8 +132,10 @@ def test_duplicate_card_actions_are_grouped():
     tao_actions = [action for action in actions if action.card_name == "tao"]
 
     alive_targets = [player for player in state.players if player.alive and player.id != human.id]
-    assert len(sha_actions) == len(alive_targets)
-    assert len(tao_actions) == 1
+    assert len(sha_actions) == len(alive_targets) * 2
+    assert {action.card_id for action in sha_actions} == {"test-sha-1", "test-sha-2"}
+    assert len(tao_actions) == 2
+    assert {action.card_id for action in tao_actions} == {"test-tao-1", "test-tao-2"}
 
 
 def test_v02_extended_cards_generate_legal_actions():
@@ -139,10 +169,10 @@ def test_wuxiekeji_can_cancel_trick_effect():
     responder.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
     responder.hand_count = 1
 
-    engine.execute_action(state, "play_wuzhongshengyou:p0")
+    engine.execute_action(state, action_id(engine, state, card_name="wuzhongshengyou"))
     assert state.pending_response is not None
     assert state.pending_response.type == "wuxie"
-    engine.execute_action(state, "wuxie")
+    engine.execute_action(state, action_id(engine, state, action_type="wuxie"))
     assert len(human.hand) == 0
     assert state.phase == "play"
 
@@ -162,7 +192,7 @@ def test_wuxiekeji_does_not_prompt_source_to_cancel_own_wuzhongshengyou():
     ]
     human.hand_count = 2
 
-    engine.execute_action(state, "play_wuzhongshengyou:p0")
+    engine.execute_action(state, action_id(engine, state, card_name="wuzhongshengyou"))
     assert state.pending_response is None
     assert len(human.hand) == 3
 
@@ -185,7 +215,7 @@ def test_rebel_ai_uses_wuxie_against_lord_benefit():
     rebel.hand_count = 1
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == ["wuxie"]
+    assert [action.type for action in ai_legal] == ["wuxie"]
 
 
 def test_rebel_ai_uses_tao_to_save_rebel_teammate():
@@ -213,7 +243,7 @@ def test_rebel_ai_uses_tao_to_save_rebel_teammate():
     )
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == ["dying_tao"]
+    assert [action.type for action in ai_legal] == ["dying_tao"]
 
 
 def test_rebel_ai_does_not_use_tao_to_save_lord():
@@ -269,7 +299,7 @@ def test_loyalist_ai_uses_tao_to_save_lord():
     )
 
     ai_legal = engine.ai_legal_actions(state, loyalist, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == ["dying_tao"]
+    assert [action.type for action in ai_legal] == ["dying_tao"]
 
 
 def test_wuxie_waiting_log_names_responder_target_and_source():
@@ -287,7 +317,7 @@ def test_wuxie_waiting_log_names_responder_target_and_source():
     responder.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
     responder.hand_count = 1
 
-    engine.execute_action(state, f"play_wuzhongshengyou:{lord.id}")
+    engine.execute_action(state, action_id(engine, state, card_name="wuzhongshengyou"))
     assert state.pending_response is not None
     assert any("响应者" in event and "目标" in event and "来源" in event for event in state.recent_events)
 
@@ -306,12 +336,12 @@ def test_juedou_requires_sha_response_when_target_has_sha():
     target.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
     target.hand_count = 1
 
-    engine.execute_action(state, f"play_juedou:{target.id}")
+    engine.execute_action(state, action_id(engine, state, card_name="juedou", target_id=target.id))
     assert state.pending_response is not None
     assert state.pending_response.type == "respond_sha"
     assert state.pending_response.player_id == target.id
     action_ids = [action.action_id for action in engine.refresh_legal_actions(state)]
-    assert "respond_sha" in action_ids
+    assert any(item.startswith("respond_sha:") for item in action_ids)
 
 
 def test_juedou_asks_wuxie_before_sha_response():
@@ -331,15 +361,15 @@ def test_juedou_asks_wuxie_before_sha_response():
     ]
     target.hand_count = 2
 
-    engine.execute_action(state, f"play_juedou:{target.id}")
+    engine.execute_action(state, action_id(engine, state, card_name="juedou", target_id=target.id))
     assert state.pending_response is not None
     assert state.pending_response.type == "wuxie"
-    assert [action.action_id for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
+    assert [action.type for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
 
     engine.execute_action(state, "pass_response")
     assert state.pending_response is not None
     assert state.pending_response.type == "respond_sha"
-    assert "respond_sha" in [action.action_id for action in engine.refresh_legal_actions(state)]
+    assert any(action.type == "respond_sha" for action in engine.refresh_legal_actions(state))
 
 
 def test_nanman_asks_wuxie_before_sha_response():
@@ -359,15 +389,15 @@ def test_nanman_asks_wuxie_before_sha_response():
     ]
     target.hand_count = 2
 
-    engine.execute_action(state, "play_nanmanruqin")
+    engine.execute_action(state, action_id(engine, state, card_name="nanmanruqin"))
     assert state.pending_response is not None
     assert state.pending_response.type == "wuxie"
-    assert [action.action_id for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
+    assert [action.type for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
 
     engine.execute_action(state, "pass_response")
     assert state.pending_response is not None
     assert state.pending_response.type == "respond_sha"
-    assert "respond_sha" in [action.action_id for action in engine.refresh_legal_actions(state)]
+    assert any(action.type == "respond_sha" for action in engine.refresh_legal_actions(state))
 
 
 def test_juedou_target_without_sha_can_only_pass_response():
@@ -382,7 +412,7 @@ def test_juedou_target_without_sha_can_only_pass_response():
     source.hand = [Card(id="test-juedou", name="juedou", suit="diamond", rank="A")]
     source.hand_count = 1
 
-    engine.execute_action(state, f"play_juedou:{target.id}")
+    engine.execute_action(state, action_id(engine, state, card_name="juedou", target_id=target.id))
     action_ids = [action.action_id for action in engine.refresh_legal_actions(state)]
     assert action_ids == ["pass_response"]
 
@@ -418,7 +448,7 @@ def test_jiedaosharen_transfers_weapon_to_source_when_target_declines_sha():
     source.hand_count = 1
     target.equipment.weapon = Card(id="test-weapon", name="qinggangjian", suit="spade", rank="6")
 
-    engine.execute_action(state, f"play_jiedaosharen:{target.id}:{victim.id}")
+    engine.execute_action(state, action_id(engine, state, card_name="jiedaosharen", target_id=target.id, secondary_target_id=victim.id))
     assert target.equipment.weapon is None
     assert any(card.id == "test-weapon" for card in source.hand)
 
@@ -504,10 +534,10 @@ def test_ai_strategy_filters_zhong_sha_against_lord():
     loyalist.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
 
     legal = engine.refresh_legal_actions(state)
-    assert any(action.action_id == f"play_sha:{lord.id}" for action in legal)
+    assert any(action.card_name == "sha" and action.target_player_id == lord.id for action in legal)
 
     ai_legal = engine.ai_legal_actions(state, loyalist, legal)
-    assert not any(action.action_id == f"play_sha:{lord.id}" for action in ai_legal)
+    assert not any(action.card_name == "sha" and action.target_player_id == lord.id for action in ai_legal)
     assert all(action.card_name == "sha" for action in ai_legal)
     assert not any(action.action_id == "end_phase" for action in ai_legal)
 
@@ -534,7 +564,8 @@ def test_ai_strategy_prefers_rebel_sha_against_lord():
     rebel.equipment.weapon = Card(id="test-weapon", name="qinglongyanyuedao", suit="spade", rank="5")
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == [f"play_sha:{lord.id}"]
+    assert [action.card_name for action in ai_legal] == ["sha"]
+    assert [action.target_player_id for action in ai_legal] == [lord.id]
 
 
 def test_ai_strategy_prefers_sha_before_other_attacks():
@@ -577,7 +608,7 @@ def test_ai_strategy_does_not_hide_loyalist_from_lord():
     lord.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
 
     legal = engine.refresh_legal_actions(state)
-    assert any(action.action_id == f"play_sha:{loyalist.id}" for action in legal)
+    assert any(action.card_name == "sha" and action.target_player_id == loyalist.id for action in legal)
     ai_legal = engine.ai_legal_actions(state, lord, legal)
     assert ai_legal
     assert all(action.card_name == "sha" for action in ai_legal)
@@ -605,7 +636,7 @@ def test_ai_strategy_does_not_hide_rebel_teammate_from_rebel_when_lord_unavailab
     rebel.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
 
     legal = engine.refresh_legal_actions(state)
-    assert any(action.action_id == f"play_sha:{rebel_teammate.id}" for action in legal)
+    assert any(action.card_name == "sha" and action.target_player_id == rebel_teammate.id for action in legal)
     ai_legal = engine.ai_legal_actions(state, rebel, legal)
     assert ai_legal
     assert all(action.card_name == "sha" for action in ai_legal)
@@ -620,10 +651,10 @@ def test_ai_strategy_responds_with_shan_when_available():
     state.pending_response = PendingResponse(type="respond_shan", player_id=ai.id, source_player_id=source.id)
 
     ai_legal = engine.ai_legal_actions(state, ai, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == ["respond_shan"]
+    assert [action.type for action in ai_legal] == ["respond_shan"]
 
 
-def test_discard_actions_are_grouped_by_card_names():
+def test_discard_actions_bind_specific_card_ids():
     engine, state = make_game()
     human = state.players[0]
     human.hand = [
@@ -638,14 +669,13 @@ def test_discard_actions_are_grouped_by_card_names():
     state.pending_response = PendingResponse(type="discard", player_id=human.id, required_count=2)
 
     actions = engine.refresh_legal_actions(state)
-    combos = [tuple(action.target_card_names or []) for action in actions]
+    combos = [tuple(action.target_card_ids or []) for action in actions]
     assert len(combos) == len(set(combos))
-    assert ("sha", "sha") in combos
-    assert combos.count(("sha", "sha")) == 1
-    assert ("tao", "tao") not in combos
+    assert ("sha-1", "sha-2") in combos
+    assert ("tao-1", "tao-1") not in combos
 
 
-def test_discard_by_card_names_randomly_takes_matching_cards():
+def test_discard_by_card_ids_takes_exact_cards():
     engine, state = make_game()
     human = state.players[0]
     human.hand = [
@@ -657,9 +687,9 @@ def test_discard_by_card_names_randomly_takes_matching_cards():
     state.phase = "discard"
     state.pending_response = PendingResponse(type="discard", player_id=human.id, required_count=2)
 
-    engine.execute_action(state, "discard:sha,sha")
-    assert [card.name for card in state.discard_pile] == ["sha", "sha"]
-    assert [card.name for card in human.hand] == ["sha"]
+    engine.execute_action(state, "discard:sha-1,sha-3")
+    assert [card.id for card in state.discard_pile] == ["sha-1", "sha-3"]
+    assert [card.id for card in human.hand] == ["sha-2"]
 
 
 def test_ai_prompt_includes_strict_role_policy():
