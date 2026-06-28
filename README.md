@@ -4,6 +4,30 @@
 
 本项目不使用任何三国杀官方图片、官方卡面或官方素材。前端只使用自制的文字卡牌 UI。
 
+## 项目展示
+
+<div align="center">
+  <img src="./assets/1.png" alt="项目截图 1" width="720" />
+</div>
+
+<br />
+
+<div align="center">
+  <img src="./assets/2.png" alt="项目截图 2" width="720" />
+</div>
+
+<br />
+
+<div align="center">
+  <img src="./assets/3.png" alt="项目截图 3" width="720" />
+</div>
+
+<br />
+
+<div align="center">
+  <img src="./assets/4.png" alt="项目截图 4" width="720" />
+</div>
+
 ## 当前版本(v0.2)项目特性
 
 - 人类玩家 + 1 到 5 个 AI，合计 2 到 6 人。
