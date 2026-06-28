@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AIConfig } from '../types';
 
 interface Props {
@@ -14,16 +14,93 @@ const defaultAi = (index: number): AIConfig => ({
   temperature: 0.2
 });
 
+const setupStorageKey = 'sanguosha-ai-arena.setup.v1';
+
+interface SavedSetup {
+  humanName: string;
+  aiCount: number;
+  aiTimeoutSeconds: string;
+  aiPlayers: AIConfig[];
+}
+
+function loadSavedSetup(): SavedSetup {
+  if (typeof window === 'undefined') {
+    return defaultSetup();
+  }
+  try {
+    const raw = window.localStorage.getItem(setupStorageKey);
+    if (!raw) {
+      return defaultSetup();
+    }
+    const parsed = JSON.parse(raw) as Partial<SavedSetup>;
+    const aiCount = clampAiCount(Number(parsed.aiCount ?? 3));
+    const aiPlayers = normalizeAiPlayers(parsed.aiPlayers, aiCount);
+    return {
+      humanName: typeof parsed.humanName === 'string' && parsed.humanName.trim() ? parsed.humanName : 'Human',
+      aiCount,
+      aiTimeoutSeconds: typeof parsed.aiTimeoutSeconds === 'string' ? parsed.aiTimeoutSeconds : '30',
+      aiPlayers,
+    };
+  } catch {
+    return defaultSetup();
+  }
+}
+
+function defaultSetup(): SavedSetup {
+  return {
+    humanName: 'Human',
+    aiCount: 3,
+    aiTimeoutSeconds: '30',
+    aiPlayers: [defaultAi(0), defaultAi(1), defaultAi(2)],
+  };
+}
+
+function clampAiCount(value: number) {
+  return Math.min(5, Math.max(1, Number.isFinite(value) ? Math.trunc(value) : 3));
+}
+
+function normalizeAiPlayers(value: unknown, aiCount: number): AIConfig[] {
+  const source = Array.isArray(value) ? value : [];
+  const normalized: AIConfig[] = source.slice(0, 5).map((item, index) => {
+    const fallback = defaultAi(index);
+    const ai = typeof item === 'object' && item !== null ? (item as Partial<AIConfig>) : {};
+    return {
+      name: typeof ai.name === 'string' ? ai.name : fallback.name,
+      base_url: typeof ai.base_url === 'string' ? ai.base_url : fallback.base_url,
+      api_key: typeof ai.api_key === 'string' ? ai.api_key : fallback.api_key,
+      model: typeof ai.model === 'string' ? ai.model : fallback.model,
+      temperature: typeof ai.temperature === 'number' && Number.isFinite(ai.temperature) ? ai.temperature : fallback.temperature,
+    };
+  });
+  while (normalized.length < aiCount) {
+    normalized.push(defaultAi(normalized.length));
+  }
+  return normalized;
+}
+
 export function GameSetup({ onCreate, loading }: Props) {
-  const [humanName, setHumanName] = useState('Human');
-  const [aiCount, setAiCount] = useState(3);
-  const [aiTimeoutSeconds, setAiTimeoutSeconds] = useState('30');
-  const [aiPlayers, setAiPlayers] = useState<AIConfig[]>([defaultAi(0), defaultAi(1), defaultAi(2)]);
+  const savedSetup = useMemo(() => loadSavedSetup(), []);
+  const [humanName, setHumanName] = useState(savedSetup.humanName);
+  const [aiCount, setAiCount] = useState(savedSetup.aiCount);
+  const [aiTimeoutSeconds, setAiTimeoutSeconds] = useState(savedSetup.aiTimeoutSeconds);
+  const [aiPlayers, setAiPlayers] = useState<AIConfig[]>(savedSetup.aiPlayers);
 
   const visibleAiPlayers = useMemo(() => aiPlayers.slice(0, aiCount), [aiPlayers, aiCount]);
 
+  useEffect(() => {
+    window.localStorage.setItem(
+      setupStorageKey,
+      JSON.stringify({
+        humanName,
+        aiCount,
+        aiTimeoutSeconds,
+        aiPlayers,
+      })
+    );
+  }, [humanName, aiCount, aiTimeoutSeconds, aiPlayers]);
+
   function changeAiCount(value: number) {
-    const next = Math.min(5, Math.max(1, value));
+    const next = clampAiCount(value);
     setAiCount(next);
     setAiPlayers((current) => {
       const copy = [...current];

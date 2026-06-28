@@ -4,6 +4,8 @@
 
 ## 启动
 
+需要 Python 3.10 或更高版本，推荐 Python 3.11+。如果默认 `python` 版本过低，请用 `python3.11` 创建项目虚拟环境。
+
 ```bash
 cd backend
 ../.venv/bin/python -m pip install -r requirements.txt

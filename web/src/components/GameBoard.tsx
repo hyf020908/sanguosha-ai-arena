@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { GameState } from '../types';
 import { ActionPanel } from './ActionPanel';
 import { DistancePanel } from './DistancePanel';
@@ -31,13 +32,30 @@ const winnerLabels: Record<string, string> = {
 export function GameBoard({ state, loading, onAction, onNewGame }: Props) {
   const human = state.players.find((player) => player.is_human);
   const current = state.players[state.current_player_index];
+  const isHumanPlayPhase = Boolean(current?.is_human && state.phase === 'play');
+  const wasHumanPlayPhase = useRef(false);
+  const [pulseTitle, setPulseTitle] = useState(false);
+
+  useEffect(() => {
+    if (isHumanPlayPhase && !wasHumanPlayPhase.current) {
+      setPulseTitle(true);
+      const timer = window.setTimeout(() => setPulseTitle(false), 1100);
+      wasHumanPlayPhase.current = true;
+      return () => window.clearTimeout(timer);
+    }
+    if (!isHumanPlayPhase) {
+      wasHumanPlayPhase.current = false;
+      setPulseTitle(false);
+    }
+    return undefined;
+  }, [isHumanPlayPhase]);
 
   return (
     <main className="game-shell">
       <header className="game-header">
         <div>
           <p className="eyebrow">第 {state.round} 轮</p>
-          <h1>{current?.name ?? '-'} 的 {phaseLabels[state.phase]}阶段</h1>
+          <h1 className={pulseTitle ? 'turn-title-pulse' : ''}>{current?.name ?? '-'} 的 {phaseLabels[state.phase]}阶段</h1>
         </div>
         <div className="header-actions">
           <div className="deck-info">牌堆 {state.deck_count} · 弃牌 {state.discard_count}</div>

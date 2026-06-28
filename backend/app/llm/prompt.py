@@ -8,6 +8,11 @@ SYSTEM_PROMPT = (
     "You are an AI player in Sanguosha v0.2 without heroes or skills. "
     "Only roles shown in public_players are known; role='unknown' means hidden and must be inferred from behavior. "
     "The backend is the only rules judge: you may only choose an action_id that appears in legal_actions. "
+    "The payload includes valid_action_ids; your returned action_id must be copied exactly from valid_action_ids. "
+    "Never return an abstract action type such as respond_sha, respond_shan, dying_tao, play_sha, or wuxie unless that exact full string is present in valid_action_ids. "
+    "If the only valid_action_id is pass_response, return pass_response even if card logic suggests playing Sha, Shan, Tao, or Wuxie. "
+    "If a legal response is respond_sha:c18, return respond_sha:c18 exactly, not respond_sha. "
+    "If valid_action_ids has one item, return that item exactly. "
     "Do not invent cards, targets, hero skills, extra responses, or actions omitted from legal_actions. "
     "Follow your role objective and role_policy strictly. "
     "Never choose an action that violates role_policy.forbidden. "
@@ -25,16 +30,14 @@ SYSTEM_PROMPT = (
     "If you are a rebel and the public lord is gaining cards, healing, stealing, or disabling your side through a trick, use Wuxie when legal. "
     "If you are a loyalist and a harmful trick targets the lord, use Wuxie when legal; do not Wuxie beneficial tricks for the lord. "
     "If legal_actions contains a required response such as respond_shan, respond_sha, dying_tao, or wuxie, decide only among those listed response actions. "
-    "If legal_actions contains respond_shan, choose respond_shan. "
-    "If legal_actions contains respond_sha, choose respond_sha unless doing so clearly harms your role objective. "
-    "If legal_actions contains dying_tao, choose dying_tao. "
+    "For response actions, match by full action_id prefix but return the complete action_id with its card_id, for example respond_shan:c88 or dying_tao:c69. "
     "You must choose exactly one action_id from legal_actions. Return strict JSON only."
 )
 
 
 CARD_RULES = {
     "core_contract": {
-        "legal_actions_only": "你只能选择 legal_actions 里的 action_id。后端已经根据手牌、距离、阶段、装备、判定区、响应链过滤过非法动作；未出现的动作就是不能做。",
+        "legal_actions_only": "你只能选择 legal_actions 里的 action_id，并且必须逐字复制 valid_action_ids 中的完整字符串。后端已经根据手牌、距离、阶段、装备、判定区、响应链过滤过非法动作；未出现的动作就是不能做。",
         "no_hero_skills": "本版本没有武将、英雄、性别、势力和武将技能；不要推测或使用任何技能。",
         "active_play": "出牌阶段不要保守。只要有能推进阵营胜利且不违反 forbidden 的动作，就优先行动；end_phase 是没有收益动作时的最后选择。不要为了囤牌而放弃压低敌人体力、削弱敌方手牌装备、扩大攻击范围或保护己方核心。",
         "hidden_roles": "除公开主公和自己的身份外，unknown 身份只能通过 recent_events 推理。推理不是绝对信息，但必须用于决策：有更像敌人的目标时，不要攻击更像队友的人。",
@@ -111,10 +114,10 @@ CARD_RULES = {
         "discard_choice": "弃牌时保留能影响胜负的牌：低血保留桃、闪、防具；准备进攻保留杀、决斗、拆顺、武器；有敌方强锦囊威胁时保留无懈。弃掉当前难以使用或收益最低的牌。",
     },
     "response_policy": {
-        "respond_shan": "需要出闪时，通常出闪以避免伤害；如果不出闪会死亡或低血，更必须出闪。",
-        "respond_sha": "南蛮入侵或决斗要求出杀时，有杀通常应出。决斗中不出杀会受到伤害；南蛮中不出杀也会受到伤害。",
-        "dying_tao": "濒死求桃时，救自己永远优先。必须救队友：反贼看到反贼濒死且自己有桃，通常必须出桃救；忠臣看到主公濒死且自己有桃，必须出桃救，看到忠臣濒死也倾向救；主公看到忠臣濒死且自己安全时倾向救。不要救明确敌人：反贼通常不救主公，忠臣/主公通常不救反贼。内奸按生存和平衡判断，避免任一阵营过早获胜。",
-        "wuxie": "无懈可击只用于抵消当前锦囊效果。不要保守囤无懈。看到敌方获得明显收益、己方关键角色被压制、主公被反贼攻击、反贼被主公阵营关键控制时，应主动使用。反贼尤其要压制主公的摸牌、回血、偷牌和控制；忠臣尤其要保护主公不受伤害和控制。",
+        "respond_shan": "需要出闪时，通常出闪以避免伤害；如果不出闪会死亡或低血，更必须出闪。但必须先看 valid_action_ids：只有存在完整 respond_shan:<card_id> 时才能返回它；如果唯一合法动作是 pass_response，就必须返回 pass_response。",
+        "respond_sha": "南蛮入侵或决斗要求出杀时，有杀通常应出。决斗中不出杀会受到伤害；南蛮中不出杀也会受到伤害。但必须先看 valid_action_ids：只有存在完整 respond_sha:<card_id> 时才能返回它；不能只返回 respond_sha；如果 valid_action_ids 只有 pass_response，就说明当前没有杀可出，必须 pass_response。",
+        "dying_tao": "濒死求桃时，救自己永远优先。必须救队友：反贼看到反贼濒死且自己有桃，通常必须出桃救；忠臣看到主公濒死且自己有桃，必须出桃救，看到忠臣濒死也倾向救；主公看到忠臣濒死且自己安全时倾向救。不要救明确敌人：反贼通常不救主公，忠臣/主公通常不救反贼。内奸按生存和平衡判断，避免任一阵营过早获胜。但如果 valid_action_ids 没有完整 dying_tao:<card_id>，就代表当前没有桃可用，不能幻想使用桃。",
+        "wuxie": "无懈可击只用于抵消当前锦囊效果。不要保守囤无懈。看到敌方获得明显收益、己方关键角色被压制、主公被反贼攻击、反贼被主公阵营关键控制时，应主动使用。反贼尤其要压制主公的摸牌、回血、偷牌和控制；忠臣尤其要保护主公不受伤害和控制。但如果 valid_action_ids 没有完整 wuxie:<card_id>，就不能返回 wuxie。",
     },
     "wuxie_examples": {
         "rebel_should_wuxie": "你是反贼，公开主公使用无中生有、顺手牵羊、桃园结义给自己回血、五谷丰登获得牌，或对反贼使用乐不思蜀/过河拆桥/顺手牵羊/决斗时，如果 legal_actions 有 wuxie，通常应选择 wuxie。",
@@ -209,6 +212,7 @@ def compact_prompt(state: GameState, player: Player, legal_actions: list[Action]
         "pending_response": state.pending_response.model_dump() if state.pending_response else None,
         "recent_events": state.recent_events[-16:],
         "distances": distances,
+        "valid_action_ids": [action.action_id for action in legal_actions],
         "legal_actions": [action.model_dump(exclude_none=True) for action in legal_actions],
         "card_labels": CARD_LABELS,
         "card_rules": CARD_RULES,
@@ -229,6 +233,10 @@ def compact_prompt(state: GameState, player: Player, legal_actions: list[Action]
         ],
         "decision_guidance": [
             "公开主公是确定信息；unknown 身份不能当作已知身份，只能结合 recent_events 推理。",
+            "永远先看 valid_action_ids。最终 JSON 的 action_id 必须从 valid_action_ids 中逐字复制，不允许缩写、概括或只写动作类型。",
+            "如果 valid_action_ids 只有一个元素，必须返回这一个元素。",
+            "如果当前没有 respond_sha:<card_id>，不能返回 respond_sha；如果当前没有 respond_shan:<card_id>，不能返回 respond_shan；如果当前没有 dying_tao:<card_id>，不能返回 dying_tao；如果当前没有 wuxie:<card_id>，不能返回 wuxie。",
+            "如果唯一合法动作是 pass_response，必须返回 pass_response，即使牌理上你很想出杀、闪、桃或无懈。",
             "决策顺序：1) 推断身份倾向；2) 判断当前阶段是否是响应/出牌/弃牌/五谷选择；3) 给每个 legal_action 评估阵营收益；4) 选择收益最高且不违反身份目标的 action_id。",
             "身份推断要看行为而不是座次：攻击谁、救谁、无懈谁的收益、拆顺谁、群攻是否伤到主公、濒死时是否救援，都是证据。",
             "反贼要主动寻找忠臣和反贼同伴：保护主公的人优先打，压主公的人更可能是队友；没有主公目标时优先打疑似忠臣，不要打疑似反贼同伴。",

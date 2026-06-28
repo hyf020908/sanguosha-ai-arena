@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import uuid
+import logging
 from collections import Counter
 from itertools import combinations
 
@@ -26,6 +27,9 @@ from app.llm.client import LLMClient
 from app.llm.prompt import compact_prompt
 from app.models import AIConfig, Action, Card, CardName, CreateGameRequest, GameState, PendingResponse, Player
 from app.storage.events import game_events
+
+
+logger = logging.getLogger(__name__)
 
 
 class GameEngine:
@@ -219,7 +223,14 @@ class GameEngine:
             return "当前没有合法动作"
 
         chosen = None
-        if actor.ai_config:
+        if len(state.legal_actions) == 1:
+            chosen = state.legal_actions[0].action_id
+            logger.info(
+                "AI action auto-selected because only one legal action exists: ai=%s action_id=%s",
+                actor.name,
+                chosen,
+            )
+        elif actor.ai_config:
             payload = compact_prompt(state, actor, legal)
             chosen = await self.llm_client.choose_action(actor.ai_config, payload, legal, state.ai_timeout_seconds)
         if chosen is None:

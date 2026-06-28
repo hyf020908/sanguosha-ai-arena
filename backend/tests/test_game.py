@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -718,6 +720,52 @@ def test_ai_prompt_includes_strict_role_policy():
     assert "camp_win_strategy" in payload["card_rules"]
     assert "action_priority" in payload["card_rules"]
     assert "阵营赢" in "".join(payload["aggressive_strategy"])
+    assert payload["valid_action_ids"] == [action.action_id for action in legal]
+    assert any("valid_action_ids" in item for item in payload["decision_guidance"])
+
+
+def test_ai_auto_selects_single_legal_action_without_llm():
+    engine, state = make_game()
+    actor = state.players[1]
+    actor.is_human = False
+    actor.hand = []
+    actor.hand_count = 0
+    state.current_player_index = 1
+    state.phase = "play"
+    state.pending_response = None
+
+    class FailingLLM:
+        async def choose_action(self, *_args, **_kwargs):
+            raise AssertionError("LLM should not be called for a single legal action")
+
+    engine.llm_client = FailingLLM()
+    asyncio.run(engine.step_ai(state))
+    assert any("结束回合" in event for event in state.recent_events)
+
+
+def test_ai_still_calls_llm_when_multiple_legal_actions():
+    engine, state = make_game()
+    actor, target = state.players[1], state.players[0]
+    actor.is_human = False
+    actor.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
+    actor.hand_count = 1
+    actor.used_sha_this_turn = False
+    target.hand = []
+    target.hand_count = 0
+    state.current_player_index = 1
+    state.phase = "play"
+    state.pending_response = None
+
+    calls = []
+
+    class RecordingLLM:
+        async def choose_action(self, _config, _payload, legal_actions, _timeout_seconds):
+            calls.append([action.action_id for action in legal_actions])
+            return next(action.action_id for action in legal_actions if action.card_name == "sha")
+
+    engine.llm_client = RecordingLLM()
+    asyncio.run(engine.step_ai(state))
+    assert calls
 
 
 def test_lord_prompt_uses_inference_not_hidden_role_knowledge():

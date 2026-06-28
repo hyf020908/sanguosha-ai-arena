@@ -186,6 +186,36 @@ label {
   text-shadow: 0 10px 28px rgba(0, 126, 156, 0.14);
 }
 
+.game-header h1 {
+  font-family:
+    "Noto Serif SC", "Songti SC", "STSong", "Times New Roman", serif;
+  font-size: clamp(24px, 3.2vw, 42px);
+  font-weight: 900;
+  line-height: 1.12;
+  background: linear-gradient(120deg, #1e3a8a 0%, #1d4ed8 58%, #4f46e5 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: none;
+}
+
+.game-header h1.turn-title-pulse {
+  animation: title-pulse 520ms ease-in-out 2;
+}
+
+@keyframes title-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+    transform: translateY(0);
+  }
+
+  50% {
+    filter: brightness(1.34);
+    transform: translateY(-1px);
+  }
+}
+
 .setup-header p,
 .game-header p {
   max-width: 680px;
@@ -543,8 +573,26 @@ label {
   padding: 0;
   list-style: none;
   color: #274c58;
+  max-height: min(68vh, 690px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
   font-family:
     "FangSong", "STFangsong", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+}
+
+.event-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+.event-log::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.34);
+  border-radius: 999px;
+}
+
+.event-log::-webkit-scrollbar-thumb {
+  background: rgba(0, 127, 147, 0.28);
+  border-radius: 999px;
 }
 
 .event-log li {
@@ -641,5 +689,9 @@ label {
 
   .header-actions {
     justify-content: flex-start;
+  }
+
+  .event-log {
+    max-height: 58vh;
   }
 }
