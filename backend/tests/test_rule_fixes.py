@@ -294,6 +294,56 @@ def test_tao_only_heals_self_in_play_phase():
     assert any(item.id == "tao" for item in state.discard_pile)
 
 
+def test_duel_source_death_advances_to_alive_player():
+    engine, state = prepared_state()
+    source, target = state.players[2], state.players[3]
+    source.role = "fan"
+    target.role = "fan"
+    state.current_player_index = 2
+    source.hp = 1
+    source.hand = [card("duel", "juedou", "diamond", "A")]
+    source.hand_count = 1
+    target.hand = [card("target-sha", "sha")]
+    target.hand_count = 1
+
+    engine.execute_action(state, find_action(engine, state, card_name="juedou", target_player_id=target.id))
+    engine.execute_action(state, "respond_sha:target-sha")
+    engine.execute_action(state, "pass_response")
+    while state.pending_response and state.pending_response.type == "dying_tao":
+        engine.execute_action(state, "pass_response")
+
+    assert source.alive is False
+    assert state.winner is None
+    assert state.pending_response is None
+    assert state.phase == "play"
+    assert state.players[state.current_player_index].alive is True
+    assert state.current_player_index != 2
+    assert engine.refresh_legal_actions(state)
+
+
+def test_shandian_death_advances_to_alive_player():
+    engine, state = prepared_state()
+    target = state.players[2]
+    target.role = "fan"
+    state.players[3].role = "fan"
+    state.current_player_index = 2
+    target.hp = 3
+    target.judgment_area = [card("lightning", "shandian", "heart", "Q")]
+    state.deck = [card("judge-spade-2", "sha", "spade", "2")]
+
+    engine.start_turn(state)
+    while state.pending_response and state.pending_response.type == "dying_tao":
+        engine.execute_action(state, "pass_response")
+
+    assert target.alive is False
+    assert state.winner is None
+    assert state.pending_response is None
+    assert state.players[state.current_player_index].alive is True
+    assert state.current_player_index != 2
+    assert state.phase in {"play", "discard"}
+    assert engine.refresh_legal_actions(state)
+
+
 def test_identity_winners_and_death_rewards():
     engine, state = prepared_state(5)
     lord, loyalist, rebel, other_rebel, spy = state.players

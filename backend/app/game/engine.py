@@ -197,11 +197,13 @@ class GameEngine:
             raise ValueError("未支持的动作类型")
 
         self._check_winner(state)
+        self._normalize_open_state(state)
         self.refresh_legal_actions(state)
 
     async def auto_advance_until_human(self, state: GameState, max_steps: int = 80) -> None:
         steps = 0
         while not state.winner and steps < max_steps:
+            self._normalize_open_state(state)
             self.refresh_legal_actions(state)
             actor = self._actor_waiting_for_action(state)
             if actor is None or actor.is_human:
@@ -211,6 +213,7 @@ class GameEngine:
         self.refresh_legal_actions(state)
 
     async def step_ai(self, state: GameState) -> str:
+        self._normalize_open_state(state)
         self.refresh_legal_actions(state)
         actor = self._actor_waiting_for_action(state)
         if actor is None:
@@ -514,9 +517,7 @@ class GameEngine:
                 self._continue_mass_trick(state, pending)
             else:
                 source_id = pending.origin_player_id or pending.source_player_id
-                if source_id:
-                    state.current_player_index = self._index_by_id(state, source_id)
-                state.phase = "play"
+                self._return_to_play_or_next_turn(state, source_id)
             return
         if pending.effect_type in {"nanmanruqin", "wanjianqifa", "taoyuanjieyi"} and pending.target_player_id:
             self._apply_mass_target_effect(state, pending)
@@ -665,8 +666,7 @@ class GameEngine:
                 source.hand_count = len(source.hand)
                 target.equipment.weapon = None
                 self._event(state, f"{target.name} 未出杀，武器交给 {source.name}")
-            state.phase = "play"
-            state.current_player_index = self._index_by_id(state, source.id)
+            self._return_to_play_or_next_turn(state, source.id)
             return
         elif effect == "juedou":
             target = self._player_by_id(state, context.target_player_id or "")
@@ -698,16 +698,13 @@ class GameEngine:
                 raise ValueError("缺少闪电牌")
             target.judgment_area.append(context.pending_card)
             self._event(state, f"闪电进入 {target.name} 的判定区")
-        state.current_player_index = self._index_by_id(state, source.id)
-        state.phase = "play"
+        self._return_to_play_or_next_turn(state, source.id)
 
     def _continue_mass_trick(self, state: GameState, context: PendingResponse) -> None:
         source = self._player_by_id(state, context.source_player_id or context.origin_player_id or "")
         remaining = [player_id for player_id in (context.remaining_player_ids or []) if self._player_by_id(state, player_id).alive]
         if not remaining:
-            state.current_player_index = self._index_by_id(state, source.id)
-            state.phase = "play"
-            state.pending_response = None
+            self._return_to_play_or_next_turn(state, source.id)
             return
         target = self._player_by_id(state, remaining[0])
         context.remaining_player_ids = remaining[1:]
@@ -826,9 +823,7 @@ class GameEngine:
         if pool:
             self._event(state, f"五谷丰登剩余 {len(pool)} 张牌进入弃牌堆")
         source = self._player_by_id(state, pending.origin_player_id or pending.source_player_id or player.id)
-        state.current_player_index = self._index_by_id(state, source.id)
-        state.pending_response = None
-        state.phase = "play"
+        self._return_to_play_or_next_turn(state, source.id)
 
     def _request_shan(
         self,
@@ -962,21 +957,43 @@ class GameEngine:
             return
         if context and context.effect_type == "shandian_judgment":
             actor = self._player_by_id(state, context.origin_player_id or context.player_id)
-            state.current_player_index = self._index_by_id(state, actor.id)
             state.pending_response = None
             if actor.alive and not state.winner:
+                state.current_player_index = self._index_by_id(state, actor.id)
                 state.phase = "draw"
                 self._draw_cards(state, actor, 2)
                 self._event(state, f"{actor.name} 摸了 2 张牌")
                 state.phase = "play"
+            else:
+                self._advance_to_next_player(state)
+                self.start_turn(state)
             return
         actor_id = context.origin_player_id or context.source_player_id if context else None
-        if actor_id:
-            state.current_player_index = self._index_by_id(state, actor_id)
-        elif fallback_player:
-            state.current_player_index = self._index_by_id(state, fallback_player.id)
+        self._return_to_play_or_next_turn(state, actor_id or (fallback_player.id if fallback_player else None))
+
+    def _return_to_play_or_next_turn(self, state: GameState, player_id: str | None) -> None:
         state.pending_response = None
-        state.phase = "play"
+        if state.winner:
+            return
+        if player_id:
+            player = self._player_by_id(state, player_id)
+            if player.alive:
+                state.current_player_index = self._index_by_id(state, player.id)
+                state.phase = "play"
+                return
+        self._advance_to_next_player(state)
+        self.start_turn(state)
+
+    def _normalize_open_state(self, state: GameState) -> None:
+        if state.winner or state.pending_response:
+            return
+        current = self.current_player(state)
+        if not current.alive:
+            self._advance_to_next_player(state)
+            self.start_turn(state)
+            return
+        if state.phase == "response":
+            state.phase = "play"
 
     def _resolve_judgment_area(self, state: GameState, player: Player) -> None:
         for card in list(reversed(player.judgment_area)):
