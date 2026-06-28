@@ -9,7 +9,7 @@ from app.game.engine import GameEngine
 from app.game.state import public_state_for_human
 from app.llm.prompt import compact_prompt
 from app.main import app
-from app.models import AIConfig, Card, CreateGameRequest, PendingResponse
+from app.models import AIConfig, Action, Card, CreateGameRequest, PendingResponse
 
 
 def make_game(seed: int = 1):
@@ -110,11 +110,14 @@ def test_tao_only_when_damaged():
     engine, state = make_game()
     force_human_play(engine, state)
     human = state.players[0]
+    human.hand = [Card(id="test-tao", name="tao", suit="heart", rank="9")]
+    human.hand_count = 1
+    state.players[1].hp = state.players[1].max_hp - 1
     human.hp = human.max_hp
     assert not any(action.card_name == "tao" for action in engine.legal_actions(state))
     human.hp = human.max_hp - 1
-    has_tao = any(card.name == "tao" for card in human.hand)
-    assert any(action.card_name == "tao" for action in engine.legal_actions(state)) == has_tao
+    tao_actions = [action for action in engine.legal_actions(state) if action.card_name == "tao"]
+    assert [action.action_id for action in tao_actions] == [f"play_tao:test-tao:{human.id}"]
 
 
 def test_duplicate_card_actions_are_grouped():
@@ -138,6 +141,31 @@ def test_duplicate_card_actions_are_grouped():
     assert {action.card_id for action in sha_actions} == {"test-sha-1", "test-sha-2"}
     assert len(tao_actions) == 2
     assert {action.card_id for action in tao_actions} == {"test-tao-1", "test-tao-2"}
+    assert {action.target_player_id for action in tao_actions} == {human.id}
+
+
+def test_play_phase_tao_cannot_heal_other_player_even_if_forged():
+    engine, state = make_game()
+    force_human_play(engine, state)
+    human, target = state.players[0], state.players[1]
+    human.hand = [Card(id="test-tao", name="tao", suit="heart", rank="9")]
+    human.hand_count = 1
+    human.hp = human.max_hp - 1
+    target.hp = target.max_hp - 1
+
+    with pytest.raises(ValueError, match="出牌阶段桃只能对自己使用"):
+        engine._play_tao(  # noqa: SLF001 - 验证绕过 legal_actions 的防御性校验
+            state,
+            Action(
+                action_id=f"play_tao:test-tao:{target.id}",
+                type="play_card",
+                card_id="test-tao",
+                card_name="tao",
+                target_player_id=target.id,
+                label="伪造桃",
+            ),
+        )
+    assert target.hp == target.max_hp - 1
 
 
 def test_v02_extended_cards_generate_legal_actions():
@@ -199,7 +227,7 @@ def test_wuxiekeji_does_not_prompt_source_to_cancel_own_wuzhongshengyou():
     assert len(human.hand) == 3
 
 
-def test_rebel_ai_uses_wuxie_against_lord_benefit():
+def test_wuxie_ai_legal_keeps_wuxie_and_pass_for_lord_benefit():
     engine, state = make_game()
     lord = next(player for player in state.players if player.role == "zhu")
     rebel = next(player for player in state.players if player.role == "fan")
@@ -217,10 +245,11 @@ def test_rebel_ai_uses_wuxie_against_lord_benefit():
     rebel.hand_count = 1
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.type for action in ai_legal] == ["wuxie"]
+    assert {action.type for action in ai_legal} == {"wuxie", "pass_response"}
+    assert ai_legal[0].type == "wuxie"
 
 
-def test_rebel_ai_uses_tao_to_save_rebel_teammate():
+def test_dying_tao_ai_legal_keeps_tao_and_pass_for_hidden_target():
     engine = GameEngine()
     state = engine.create_game(
         CreateGameRequest(
@@ -230,25 +259,25 @@ def test_rebel_ai_uses_tao_to_save_rebel_teammate():
         )
     )
     rebel = state.players[2]
-    rebel_teammate = state.players[3]
+    hidden_target = state.players[3]
     assert rebel.role == "fan"
-    assert rebel_teammate.role == "fan"
+    assert hidden_target.role == "fan"
     rebel.hand = [Card(id="test-tao", name="tao", suit="heart", rank="3")]
     rebel.hand_count = 1
-    rebel_teammate.hp = 0
+    hidden_target.hp = 0
     state.phase = "response"
     state.pending_response = PendingResponse(
         type="dying_tao",
         player_id=rebel.id,
         source_player_id=state.players[0].id,
-        target_player_id=rebel_teammate.id,
+        target_player_id=hidden_target.id,
     )
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.type for action in ai_legal] == ["dying_tao"]
+    assert {action.type for action in ai_legal} == {"dying_tao", "pass_response"}
 
 
-def test_rebel_ai_does_not_use_tao_to_save_lord():
+def test_dying_tao_ai_legal_keeps_tao_and_pass_for_lord_target():
     engine = GameEngine()
     state = engine.create_game(
         CreateGameRequest(
@@ -273,10 +302,10 @@ def test_rebel_ai_does_not_use_tao_to_save_lord():
     )
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.action_id for action in ai_legal] == ["pass_response"]
+    assert {action.type for action in ai_legal} == {"dying_tao", "pass_response"}
 
 
-def test_loyalist_ai_uses_tao_to_save_lord():
+def test_dying_tao_ai_legal_keeps_tao_and_pass_for_loyalist_saving_lord():
     engine = GameEngine()
     state = engine.create_game(
         CreateGameRequest(
@@ -301,7 +330,42 @@ def test_loyalist_ai_uses_tao_to_save_lord():
     )
 
     ai_legal = engine.ai_legal_actions(state, loyalist, engine.refresh_legal_actions(state))
-    assert [action.type for action in ai_legal] == ["dying_tao"]
+    assert {action.type for action in ai_legal} == {"dying_tao", "pass_response"}
+
+
+def test_dying_tao_fallback_self_saves_but_other_target_passes():
+    engine, state = make_game()
+    actor, other = state.players[1], state.players[2]
+    actor.hand = [Card(id="test-tao", name="tao", suit="heart", rank="3")]
+    actor.hand_count = 1
+    state.phase = "response"
+    state.pending_response = PendingResponse(type="dying_tao", player_id=actor.id, target_player_id=actor.id)
+    legal = engine.refresh_legal_actions(state)
+    assert engine._default_action_id(legal, state, actor) == "dying_tao:test-tao"  # noqa: SLF001
+
+    state.pending_response = PendingResponse(type="dying_tao", player_id=actor.id, target_player_id=other.id)
+    legal = engine.refresh_legal_actions(state)
+    assert engine._default_action_id(legal, state, actor) == "pass_response"  # noqa: SLF001
+
+
+def test_wuxie_fallback_defaults_to_pass_for_non_self_target():
+    engine, state = make_game()
+    actor, source, target = state.players[1], state.players[0], state.players[2]
+    actor.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
+    actor.hand_count = 1
+    state.phase = "response"
+    state.pending_response = PendingResponse(
+        type="wuxie",
+        player_id=actor.id,
+        source_player_id=source.id,
+        target_player_id=target.id,
+        card_name="guohechaiqiao",
+        effect_type="guohechaiqiao",
+    )
+
+    legal = engine.refresh_legal_actions(state)
+    assert {action.type for action in legal} == {"wuxie", "pass_response"}
+    assert engine._default_action_id(legal, state, actor) == "pass_response"  # noqa: SLF001
 
 
 def test_wuxie_waiting_log_names_responder_target_and_source():
@@ -540,8 +604,7 @@ def test_ai_strategy_filters_zhong_sha_against_lord():
 
     ai_legal = engine.ai_legal_actions(state, loyalist, legal)
     assert not any(action.card_name == "sha" and action.target_player_id == lord.id for action in ai_legal)
-    assert all(action.card_name == "sha" for action in ai_legal)
-    assert not any(action.action_id == "end_phase" for action in ai_legal)
+    assert any(action.card_name == "sha" and action.target_player_id != lord.id for action in ai_legal)
 
 
 def test_ai_strategy_prefers_rebel_sha_against_lord():
@@ -566,8 +629,9 @@ def test_ai_strategy_prefers_rebel_sha_against_lord():
     rebel.equipment.weapon = Card(id="test-weapon", name="qinglongyanyuedao", suit="spade", rank="5")
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert [action.card_name for action in ai_legal] == ["sha"]
-    assert [action.target_player_id for action in ai_legal] == [lord.id]
+    assert any(action.card_name == "sha" and action.target_player_id == lord.id for action in ai_legal)
+    assert ai_legal[0].card_name == "sha"
+    assert ai_legal[0].target_player_id == lord.id
 
 
 def test_ai_strategy_prefers_sha_before_other_attacks():
@@ -584,8 +648,9 @@ def test_ai_strategy_prefers_sha_before_other_attacks():
 
     ai_legal = engine.ai_legal_actions(state, actor, engine.refresh_legal_actions(state))
     assert ai_legal
-    assert all(action.card_name == "sha" for action in ai_legal)
-    assert not any(action.action_id == "end_phase" for action in ai_legal)
+    assert ai_legal[0].card_name == "sha"
+    assert any(action.card_name == "juedou" for action in ai_legal)
+    assert any(action.action_id == "end_phase" for action in ai_legal)
 
 
 def test_ai_strategy_does_not_hide_loyalist_from_lord():
@@ -613,7 +678,7 @@ def test_ai_strategy_does_not_hide_loyalist_from_lord():
     assert any(action.card_name == "sha" and action.target_player_id == loyalist.id for action in legal)
     ai_legal = engine.ai_legal_actions(state, lord, legal)
     assert ai_legal
-    assert all(action.card_name == "sha" for action in ai_legal)
+    assert any(action.card_name == "sha" and action.target_player_id == loyalist.id for action in ai_legal)
 
 
 def test_ai_strategy_does_not_hide_rebel_teammate_from_rebel_when_lord_unavailable():
@@ -641,7 +706,7 @@ def test_ai_strategy_does_not_hide_rebel_teammate_from_rebel_when_lord_unavailab
     assert any(action.card_name == "sha" and action.target_player_id == rebel_teammate.id for action in legal)
     ai_legal = engine.ai_legal_actions(state, rebel, legal)
     assert ai_legal
-    assert all(action.card_name == "sha" for action in ai_legal)
+    assert any(action.card_name == "sha" and action.target_player_id == rebel_teammate.id for action in ai_legal)
 
 
 def test_ai_strategy_responds_with_shan_when_available():

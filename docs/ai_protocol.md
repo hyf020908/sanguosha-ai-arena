@@ -11,7 +11,7 @@ system prompt 会要求模型：
 - 不能发明手牌、目标、技能、额外响应或未列出的动作。
 - 必须遵守身份目标和 `role_policy.forbidden`。
 - 如果存在符合身份目标且不违反禁止策略的 `杀`，强烈倾向于选择 `杀`，不要直接结束阶段。
-- 后端会按策略分数优先提供高收益动作：保命响应、杀、决斗、拆顺、借刀、装备和其它锦囊会排在结束阶段之前。
+- 后端只生成规则合法动作，并可按公开信息做轻量排序；具体策略选择由 LLM 完成，后端不使用隐藏身份替 AI 删除救援、无懈、攻击或控制动作。
 - Prompt 会额外提供 `aggressive_strategy`，明确要求 AI 不要保守，能推进身份目标时主动行动。
 - 遇到 `respond_shan`、`respond_sha`、`dying_tao`、`wuxie` 等响应时，只能在后端列出的响应动作中选择。
 - 所有使用、响应、装备和弃牌动作都绑定具体 `card_id`；同名牌不能混用，必须选择对应 action_id。
@@ -27,6 +27,7 @@ user prompt 是紧凑 JSON，包含：
 - `recent_events`：最近事件。
 - `distances`：全员公开距离、攻击范围和是否可攻击。
 - `legal_actions`：后端生成的合法动作列表，包含 `card_id`、`card_name`、`card_suit`、`card_rank`、目标名称、拆顺选择区域、公开选择牌等结构化信息。
+- `valid_action_ids`：最终可选动作集合。模型最终返回值必须逐字来自这里。
 - `card_labels`：牌名映射。
 - `card_rules`：v0.2 已实现牌型规则摘要。
 - `objective_hint`：身份目标提示。
@@ -35,7 +36,11 @@ user prompt 是紧凑 JSON，包含：
 
 ## AI 只能选择 legal_actions
 
-AI 返回的 `action_id` 必须存在于 `legal_actions`。后端执行动作前会再次校验。如果 AI 输出了不存在的动作，后端会重试一次；仍然失败则执行默认动作。AI 不能只说“出杀”或“使用桃”，必须返回某个包含具体牌 ID 的合法动作，例如 `respond_sha:c33` 或 `play_tao:c71:p2`。
+AI 返回的 `action_id` 必须存在于 `legal_actions` 和 `valid_action_ids`。后端执行动作前会再次校验。如果 AI 输出了不存在的动作，后端会重试一次；仍然失败则执行默认动作。AI 不能只说“出杀”或“使用桃”，必须返回某个包含具体牌 ID 的合法动作，例如 `respond_sha:c33` 或 `dying_tao:c71`。
+
+后端不会把其他隐藏身份直接暴露给 LLM。`public_players` 中除当前 AI 自己和公开主公外，身份均为 `unknown`；`legal_actions` 中的目标身份如果是 `unknown`，模型只能根据 `recent_events` 推断，不能当作已知身份。
+
+濒死求桃时，如果同时存在 `dying_tao:<card_id>` 和 `pass_response`，模型必须根据公开信息和 `recent_events` 推理是否救人。无懈响应时，如果同时存在 `wuxie:<card_id>` 和 `pass_response`，模型也必须根据公开信息和 `recent_events` 判断是否无懈。
 
 前端也只展示后端返回给人类玩家的 `legal_actions`，因此“不允许出的牌”不会出现在按钮区。
 
@@ -61,7 +66,7 @@ AI 必须返回严格 JSON：
 - JSON 中没有 `action_id`。
 - `action_id` 不在当前 `legal_actions` 中。
 
-后端最多重试 1 次。仍失败时，后端会优先选择安全动作，例如响应牌、结束阶段、不响应锦囊、不使用桃，或弃牌阶段的一个合法弃牌组合。
+后端最多重试 1 次。仍失败时，后端会优先选择安全动作，例如保命响应、结束阶段、不响应锦囊，或弃牌阶段的一个合法弃牌组合。濒死求桃时，AI 自己濒死会默认自救；别人濒死则默认不救，除非 LLM 成功选择 `dying_tao:<card_id>`。无懈响应默认不使用无懈，除非是明确作用于自己的公开自保场景。
 
 后端不会在日志中打印完整 `api_key`，状态接口也不会回显 `api_key`。
 

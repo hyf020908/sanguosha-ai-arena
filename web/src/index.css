@@ -346,10 +346,10 @@ label {
 }
 
 .player-card.active {
-  border-color: rgba(0, 167, 199, 0.78);
+  border-color: rgba(168, 132, 255, 0.82);
   box-shadow:
-    0 20px 48px rgba(0, 139, 177, 0.18),
-    inset 0 0 0 2px rgba(0, 167, 199, 0.15);
+    0 20px 48px rgba(126, 87, 194, 0.18),
+    inset 0 0 0 5px rgba(168, 132, 255, 0.34);
 }
 
 .player-card.dead {

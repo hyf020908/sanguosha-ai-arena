@@ -276,15 +276,21 @@ def test_wuxie_chain_can_counter_wuxie_and_restore_original_effect():
     assert [item.id for item in source.hand] == ["draw-1", "draw-2"]
 
 
-def test_tao_can_heal_any_injured_alive_player_in_play_phase():
+def test_tao_only_heals_self_in_play_phase():
     engine, state = prepared_state()
     source, target = state.players[0], state.players[1]
     source.hand = [card("tao", "tao", "heart", "3")]
     source.hand_count = 1
+    source.hp = 3
     target.hp = 2
 
-    engine.execute_action(state, find_action(engine, state, card_name="tao", target_player_id=target.id))
-    assert target.hp == 3
+    legal = engine.refresh_legal_actions(state)
+    assert any(action.card_name == "tao" and action.target_player_id == source.id for action in legal)
+    assert not any(action.card_name == "tao" and action.target_player_id == target.id for action in legal)
+
+    engine.execute_action(state, find_action(engine, state, card_name="tao", target_player_id=source.id))
+    assert source.hp == 4
+    assert target.hp == 2
     assert any(item.id == "tao" for item in state.discard_pile)
 
 

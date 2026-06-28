@@ -103,8 +103,8 @@ class GameEngine:
                         actions.append(self._card_action(f"play_sha:{card.id}:{target.id}", "play_card", card, target, f"杀 → {target.name}"))
 
         for card in cards_by_name.get("tao", []):
-            for target in [item for item in state.players if item.alive and item.hp < item.max_hp]:
-                actions.append(self._card_action(f"play_tao:{card.id}:{target.id}", "play_card", card, target, f"桃 → {target.name}"))
+            if player.alive and player.hp < player.max_hp:
+                actions.append(self._card_action(f"play_tao:{card.id}:{player.id}", "play_card", card, player, "桃 → 自己"))
 
         for card in cards_by_name.get("wuzhongshengyou", []):
             actions.append(self._card_action(f"play_wuzhongshengyou:{card.id}:{player.id}", "play_card", card, player, "无中生有"))
@@ -223,8 +223,8 @@ class GameEngine:
             return "当前没有合法动作"
 
         chosen = None
-        if len(state.legal_actions) == 1:
-            chosen = state.legal_actions[0].action_id
+        if len(legal) == 1:
+            chosen = legal[0].action_id
             logger.info(
                 "AI action auto-selected because only one legal action exists: ai=%s action_id=%s",
                 actor.name,
@@ -234,15 +234,15 @@ class GameEngine:
             payload = compact_prompt(state, actor, legal)
             chosen = await self.llm_client.choose_action(actor.ai_config, payload, legal, state.ai_timeout_seconds)
         if chosen is None:
-            chosen = self._default_action_id(legal)
+            chosen = self._default_action_id(legal, state, actor)
             self._event(state, f"{actor.name} 使用默认动作")
         self.execute_action(state, chosen)
         return f"{actor.name} 执行 {chosen}"
 
     def ai_legal_actions(self, state: GameState, actor: Player, legal_actions: list[Action]) -> list[Action]:
-        filtered = [action for action in legal_actions if self._ai_action_allowed_by_role(state, actor, action)]
+        filtered = [action for action in legal_actions if self._ai_action_allowed_by_public_info(state, actor, action)]
         if not filtered:
-            filtered = [action for action in legal_actions if action.type != "play_card" or action.card_name not in {"sha", "juedou"}]
+            filtered = legal_actions
         return self._ai_ranked_actions(state, actor, filtered) or filtered
 
     def start_turn(self, state: GameState) -> None:
@@ -358,6 +358,8 @@ class GameEngine:
     def _play_tao(self, state: GameState, action: Action) -> None:
         player = self.current_player(state)
         target = self._player_by_id(state, action.target_player_id or player.id)
+        if target.id != player.id:
+            raise ValueError("出牌阶段桃只能对自己使用")
         if not target.alive or target.hp >= target.max_hp:
             raise ValueError("桃只能对受伤的存活角色使用")
         card = self._take_card(player, action.card_id or "")
@@ -1068,8 +1070,28 @@ class GameEngine:
             return self.current_player(state)
         return None
 
-    def _default_action_id(self, legal: list[Action]) -> str:
-        for preferred in ("dying_tao", "respond_shan", "respond_sha", "wuxie", "wugu_choose", "pass_response", "end_phase"):
+    def _default_action_id(self, legal: list[Action], state: GameState | None = None, actor: Player | None = None) -> str:
+        if state and actor and state.pending_response:
+            pending = state.pending_response
+            if pending.type == "dying_tao":
+                target_id = pending.target_player_id or pending.player_id
+                if target_id == actor.id:
+                    match = next((action for action in legal if action.type == "dying_tao"), None)
+                    if match:
+                        return match.action_id
+                pass_action = next((action for action in legal if action.action_id == "pass_response"), None)
+                if pass_action:
+                    return pass_action.action_id
+            if pending.type == "wuxie":
+                if self._wuxie_is_clear_self_defense(state, actor, pending):
+                    match = next((action for action in legal if action.type == "wuxie"), None)
+                    if match:
+                        return match.action_id
+                pass_action = next((action for action in legal if action.action_id == "pass_response"), None)
+                if pass_action:
+                    return pass_action.action_id
+
+        for preferred in ("respond_shan", "respond_sha", "wugu_choose", "pass_response", "end_phase"):
             match = next((action for action in legal if action.type == preferred or action.action_id == preferred), None)
             if match:
                 return match.action_id
@@ -1078,17 +1100,27 @@ class GameEngine:
                 return action.action_id
         return legal[0].action_id
 
-    def _ai_action_allowed_by_role(self, state: GameState, actor: Player, action: Action) -> bool:
-        if action.type != "play_card" or action.card_name not in {"sha", "juedou", "nanmanruqin", "wanjianqifa"}:
+    def _known_role_for_ai(self, viewer: Player, target: Player) -> str:
+        if target.id == viewer.id or target.role_public:
+            return target.role
+        return "unknown"
+
+    def _is_public_lord(self, target: Player) -> bool:
+        return target.role_public and target.role == "zhu"
+
+    def _ai_action_allowed_by_public_info(self, state: GameState, actor: Player, action: Action) -> bool:
+        if action.type != "play_card" or actor.role != "zhong":
             return True
-        target_ids = []
+        if action.card_name not in {"sha", "juedou", "nanmanruqin", "wanjianqifa", "jiedaosharen"}:
+            return True
+        target_ids: list[str] = []
         if action.target_player_id:
             target_ids.append(action.target_player_id)
+        if action.card_name == "jiedaosharen" and action.secondary_target_player_id:
+            target_ids.append(action.secondary_target_player_id)
         if action.card_name in {"nanmanruqin", "wanjianqifa"}:
             target_ids = [target.id for target in self._alive_opponents(state, actor)]
-        if actor.role == "zhong":
-            return not any(self._player_by_id(state, target_id).role == "zhu" for target_id in target_ids)
-        return True
+        return not any(self._is_public_lord(self._player_by_id(state, target_id)) for target_id in target_ids)
 
     def _ai_ranked_actions(self, state: GameState, actor: Player, actions: list[Action]) -> list[Action]:
         if state.pending_response:
@@ -1096,21 +1128,31 @@ class GameEngine:
                 return [action for action in actions if action.type == "respond_shan"] or actions
             if state.pending_response.type == "respond_sha":
                 return [action for action in actions if action.type == "respond_sha"] or actions
-            if state.pending_response.type == "dying_tao":
-                preferred_type = "dying_tao" if self._ai_should_use_tao_for_dying(state, actor, state.pending_response) else "pass_response"
-                return [action for action in actions if action.type == preferred_type] or actions
-            if state.pending_response.type == "wuxie":
-                preferred_type = "wuxie" if self._ai_should_use_wuxie(state, actor, state.pending_response) else "pass_response"
-                return [action for action in actions if action.type == preferred_type] or actions
             if state.pending_response.type == "wugu":
                 return sorted(actions, key=lambda action: self._ai_wugu_card_score(action), reverse=True) or actions
+            if state.pending_response.type == "wuxie":
+                return sorted(actions, key=lambda action: self._ai_response_action_score(state, actor, action), reverse=True) or actions
             return actions
 
-        scored = sorted(actions, key=lambda action: self._ai_action_score(state, actor, action), reverse=True)
-        best_score = self._ai_action_score(state, actor, scored[0]) if scored else 0
-        if best_score > 0:
-            return [action for action in scored if self._ai_action_score(state, actor, action) == best_score]
-        return scored or actions
+        return sorted(actions, key=lambda action: self._ai_action_score(state, actor, action), reverse=True) or actions
+
+    def _ai_response_action_score(self, state: GameState, actor: Player, action: Action) -> int:
+        if action.type != "wuxie" or not state.pending_response:
+            return 0
+        pending = state.pending_response
+        if self._wuxie_is_clear_self_defense(state, actor, pending):
+            return 30
+        target = self._player_by_id(state, pending.target_player_id) if pending.target_player_id else None
+        source = self._player_by_id(state, pending.source_player_id or pending.origin_player_id or "") if pending.source_player_id or pending.origin_player_id else None
+        beneficial = self._is_beneficial_effect(pending)
+        harmful = self._is_harmful_effect(pending)
+        if actor.role == "zhong" and target and self._is_public_lord(target) and harmful:
+            return 25
+        if actor.role == "fan" and target and self._is_public_lord(target) and beneficial:
+            return 25
+        if actor.role == "fan" and source and self._is_public_lord(source) and beneficial:
+            return 22
+        return 10
 
     def _ai_action_score(self, state: GameState, actor: Player, action: Action) -> int:
         if action.type == "end_phase":
@@ -1167,17 +1209,16 @@ class GameEngine:
         if not target_player_id:
             return 0
         target = self._player_by_id(state, target_player_id)
+        known_role = self._known_role_for_ai(actor, target)
         score = max(0, target.max_hp - target.hp) + max(0, 5 - target.hp)
+        score += min(4, len(target.hand))
+        score += 8 * len([card for card in target.equipment.model_dump().values() if card])
         if actor.role == "fan":
-            if target.role_public and target.role == "zhu":
+            if known_role == "zhu":
                 return score + 80
-            if target.role == "fan":
-                return score - 60
             return score + 20
         if actor.role in {"zhu", "zhong"}:
-            if target.role == "fan":
-                return score + 60
-            if target.role == "zhu":
+            if known_role == "zhu":
                 return score - 100
             return score + 10
         if actor.role == "nei":
@@ -1189,17 +1230,18 @@ class GameEngine:
     def _ai_mass_attack_is_reasonable(self, state: GameState, actor: Player) -> bool:
         targets = self._alive_opponents(state, actor)
         if actor.role == "fan":
-            return any(target.role_public and target.role == "zhu" for target in targets)
+            return any(self._is_public_lord(target) for target in targets)
         if actor.role == "zhong":
-            return not any(target.role == "zhu" for target in targets)
+            return not any(self._is_public_lord(target) for target in targets)
         return True
 
-    def _ai_should_use_wuxie(self, state: GameState, actor: Player, pending: PendingResponse) -> bool:
+    def _wuxie_is_clear_self_defense(self, state: GameState, actor: Player, pending: PendingResponse) -> bool:
+        target = self._player_by_id(state, pending.target_player_id) if pending.target_player_id else None
+        return bool(target and target.id == actor.id and self._is_harmful_effect(pending) and not pending.wuxie_effect_cancelled)
+
+    def _is_harmful_effect(self, pending: PendingResponse) -> bool:
         effect = pending.effect_type or pending.card_name
-        source = self._player_by_id(state, pending.source_player_id or pending.origin_player_id or "")
-        target = self._player_by_id(state, pending.target_player_id) if pending.target_player_id else source
-        beneficial = self._is_beneficial_effect(pending)
-        harmful = effect in {
+        return effect in {
             "guohechaiqiao",
             "shunshouqianyang",
             "jiedaosharen",
@@ -1209,79 +1251,6 @@ class GameEngine:
             "lebusishu",
             "shandian",
         }
-
-        if pending.wuxie_effect_cancelled:
-            if self._same_camp(actor, source) and beneficial:
-                return True
-            if self._same_camp(actor, target) and harmful:
-                return True
-            if actor.role == "fan" and source.role_public and source.role == "zhu" and harmful:
-                return False
-            if actor.role in {"zhu", "zhong"} and target.role == "fan" and harmful:
-                return False
-
-        if actor.role == "fan":
-            if target.role_public and target.role == "zhu" and beneficial:
-                return True
-            if source.role_public and source.role == "zhu" and effect in {"wuzhongshengyou", "wugufengdeng", "taoyuanjieyi"}:
-                return True
-            if target.role == "fan" and harmful:
-                return True
-            return False
-
-        if actor.role == "zhong":
-            if target.role == "zhu" and harmful:
-                return True
-            if target.role == "zhu" and beneficial:
-                return False
-            if source.role == "zhu" and beneficial:
-                return False
-            return target.role == "fan" and beneficial
-
-        if actor.role == "zhu":
-            if beneficial and target.id == actor.id:
-                return False
-            if harmful and target.id == actor.id:
-                return True
-            return target.role == "fan" and beneficial
-
-        if actor.role == "nei":
-            if target.id == actor.id and harmful:
-                return True
-            if target.id == actor.id and beneficial:
-                return False
-            return target.hp <= 2 and beneficial
-
-        return False
-
-    def _same_camp(self, actor: Player, target: Player) -> bool:
-        if actor.id == target.id:
-            return True
-        if actor.role == "fan":
-            return target.role == "fan"
-        if actor.role in {"zhu", "zhong"}:
-            return target.role in {"zhu", "zhong"}
-        return target.role == "nei"
-
-    def _ai_should_use_tao_for_dying(self, state: GameState, actor: Player, pending: PendingResponse) -> bool:
-        if not any(card.name == "tao" for card in actor.hand):
-            return False
-        target = self._player_by_id(state, pending.target_player_id or pending.player_id)
-        if target.id == actor.id:
-            return True
-        if actor.role == "fan":
-            return target.role == "fan"
-        if actor.role == "zhong":
-            return target.role in {"zhu", "zhong"}
-        if actor.role == "zhu":
-            return target.role in {"zhu", "zhong"}
-        if actor.role == "nei":
-            lord = next(player for player in state.players if player.role == "zhu")
-            rebels_alive = sum(1 for player in state.players if player.alive and player.role == "fan")
-            if target.role == "zhu" and rebels_alive > 0:
-                return True
-            return target.role == "nei"
-        return False
 
     def _wuxie_waiting_message(self, state: GameState, context: PendingResponse) -> str:
         responder = self._player_by_id(state, context.player_id).name if context.player_id else "无人"
