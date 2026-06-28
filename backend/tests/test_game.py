@@ -50,6 +50,13 @@ def test_deck_order_is_not_fixed_between_games():
     assert [card.id for card in first.deck[:10]] != [card.id for card in second.deck[:10]]
 
 
+def test_v02_deck_has_standard_card_count():
+    _, state = make_game(seed=1)
+    all_cards = state.deck + state.discard_pile + [card for player in state.players for card in player.hand]
+    assert len(all_cards) == 108
+    assert {"wuxiekeji", "nanmanruqin", "wanjianqifa", "lebusishu", "shandian"} <= {card.name for card in all_cards}
+
+
 def test_legal_actions_not_empty_for_play_phase():
     engine, state = make_game()
     force_human_play(engine, state)
@@ -101,6 +108,338 @@ def test_duplicate_card_actions_are_grouped():
     assert len(tao_actions) == 1
 
 
+def test_v02_extended_cards_generate_legal_actions():
+    engine, state = make_game()
+    force_human_play(engine, state)
+    human = state.players[0]
+    human.hand = [
+        Card(id="test-nanman", name="nanmanruqin", suit="spade", rank="K"),
+        Card(id="test-wuzhong", name="wuzhongshengyou", suit="heart", rank="7"),
+        Card(id="test-zhuge", name="zhugeliannu", suit="club", rank="A"),
+    ]
+    human.hand_count = len(human.hand)
+
+    actions = engine.legal_actions(state)
+    assert any(action.card_name == "nanmanruqin" for action in actions)
+    assert any(action.card_name == "wuzhongshengyou" for action in actions)
+    assert any(action.card_name == "zhugeliannu" and action.type == "equip_card" for action in actions)
+
+
+def test_wuxiekeji_can_cancel_trick_effect():
+    engine, state = make_game()
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    human, responder = state.players[0], state.players[1]
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    human.hand = [Card(id="test-wuzhong", name="wuzhongshengyou", suit="heart", rank="7")]
+    human.hand_count = 1
+    responder.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
+    responder.hand_count = 1
+
+    engine.execute_action(state, "play_wuzhongshengyou:p0")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "wuxie"
+    engine.execute_action(state, "wuxie")
+    assert len(human.hand) == 0
+    assert state.phase == "play"
+
+
+def test_wuxiekeji_does_not_prompt_source_to_cancel_own_wuzhongshengyou():
+    engine, state = make_game()
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    human = state.players[0]
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    human.hand = [
+        Card(id="test-wuzhong", name="wuzhongshengyou", suit="heart", rank="7"),
+        Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q"),
+    ]
+    human.hand_count = 2
+
+    engine.execute_action(state, "play_wuzhongshengyou:p0")
+    assert state.pending_response is None
+    assert len(human.hand) == 3
+
+
+def test_rebel_ai_uses_wuxie_against_lord_benefit():
+    engine, state = make_game()
+    lord = next(player for player in state.players if player.role == "zhu")
+    rebel = next(player for player in state.players if player.role == "fan")
+    state.phase = "response"
+    state.pending_response = PendingResponse(
+        type="wuxie",
+        player_id=rebel.id,
+        source_player_id=lord.id,
+        origin_player_id=lord.id,
+        target_player_id=lord.id,
+        card_name="wuzhongshengyou",
+        effect_type="wuzhongshengyou",
+    )
+    rebel.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
+    rebel.hand_count = 1
+
+    ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
+    assert [action.action_id for action in ai_legal] == ["wuxie"]
+
+
+def test_rebel_ai_uses_tao_to_save_rebel_teammate():
+    engine = GameEngine()
+    state = engine.create_game(
+        CreateGameRequest(
+            human_name="Human",
+            ai_players=[AIConfig(name="AI-1"), AIConfig(name="AI-2"), AIConfig(name="AI-3")],
+            seed=5,
+        )
+    )
+    rebel = state.players[2]
+    rebel_teammate = state.players[3]
+    assert rebel.role == "fan"
+    assert rebel_teammate.role == "fan"
+    rebel.hand = [Card(id="test-tao", name="tao", suit="heart", rank="3")]
+    rebel.hand_count = 1
+    rebel_teammate.hp = 0
+    state.phase = "response"
+    state.pending_response = PendingResponse(
+        type="dying_tao",
+        player_id=rebel.id,
+        source_player_id=state.players[0].id,
+        target_player_id=rebel_teammate.id,
+    )
+
+    ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
+    assert [action.action_id for action in ai_legal] == ["dying_tao"]
+
+
+def test_rebel_ai_does_not_use_tao_to_save_lord():
+    engine = GameEngine()
+    state = engine.create_game(
+        CreateGameRequest(
+            human_name="Human",
+            ai_players=[AIConfig(name="AI-1"), AIConfig(name="AI-2"), AIConfig(name="AI-3")],
+            seed=5,
+        )
+    )
+    lord = state.players[0]
+    rebel = state.players[2]
+    assert lord.role == "zhu"
+    assert rebel.role == "fan"
+    rebel.hand = [Card(id="test-tao", name="tao", suit="heart", rank="3")]
+    rebel.hand_count = 1
+    lord.hp = 0
+    state.phase = "response"
+    state.pending_response = PendingResponse(
+        type="dying_tao",
+        player_id=rebel.id,
+        source_player_id=rebel.id,
+        target_player_id=lord.id,
+    )
+
+    ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
+    assert [action.action_id for action in ai_legal] == ["pass_response"]
+
+
+def test_loyalist_ai_uses_tao_to_save_lord():
+    engine = GameEngine()
+    state = engine.create_game(
+        CreateGameRequest(
+            human_name="Human",
+            ai_players=[AIConfig(name="AI-1"), AIConfig(name="AI-2"), AIConfig(name="AI-3")],
+            seed=5,
+        )
+    )
+    lord = state.players[0]
+    loyalist = state.players[1]
+    assert lord.role == "zhu"
+    assert loyalist.role == "zhong"
+    loyalist.hand = [Card(id="test-tao", name="tao", suit="heart", rank="3")]
+    loyalist.hand_count = 1
+    lord.hp = 0
+    state.phase = "response"
+    state.pending_response = PendingResponse(
+        type="dying_tao",
+        player_id=loyalist.id,
+        source_player_id=state.players[2].id,
+        target_player_id=lord.id,
+    )
+
+    ai_legal = engine.ai_legal_actions(state, loyalist, engine.refresh_legal_actions(state))
+    assert [action.action_id for action in ai_legal] == ["dying_tao"]
+
+
+def test_wuxie_waiting_log_names_responder_target_and_source():
+    engine, state = make_game()
+    lord = next(player for player in state.players if player.role == "zhu")
+    responder = next(player for player in state.players if player.id != lord.id)
+    state.current_player_index = state.players.index(lord)
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    lord.hand = [Card(id="test-wuzhong", name="wuzhongshengyou", suit="heart", rank="7")]
+    lord.hand_count = 1
+    responder.hand = [Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q")]
+    responder.hand_count = 1
+
+    engine.execute_action(state, f"play_wuzhongshengyou:{lord.id}")
+    assert state.pending_response is not None
+    assert any("响应者" in event and "目标" in event and "来源" in event for event in state.recent_events)
+
+
+def test_juedou_requires_sha_response_when_target_has_sha():
+    engine, state = make_game()
+    source, target = state.players[0], state.players[1]
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    source.hand = [Card(id="test-juedou", name="juedou", suit="diamond", rank="A")]
+    source.hand_count = 1
+    target.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
+    target.hand_count = 1
+
+    engine.execute_action(state, f"play_juedou:{target.id}")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "respond_sha"
+    assert state.pending_response.player_id == target.id
+    action_ids = [action.action_id for action in engine.refresh_legal_actions(state)]
+    assert "respond_sha" in action_ids
+
+
+def test_juedou_asks_wuxie_before_sha_response():
+    engine, state = make_game()
+    source, target = state.players[0], state.players[1]
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    source.hand = [Card(id="test-juedou", name="juedou", suit="diamond", rank="A")]
+    source.hand_count = 1
+    target.hand = [
+        Card(id="test-sha", name="sha", suit="spade", rank="7"),
+        Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q"),
+    ]
+    target.hand_count = 2
+
+    engine.execute_action(state, f"play_juedou:{target.id}")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "wuxie"
+    assert [action.action_id for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
+
+    engine.execute_action(state, "pass_response")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "respond_sha"
+    assert "respond_sha" in [action.action_id for action in engine.refresh_legal_actions(state)]
+
+
+def test_nanman_asks_wuxie_before_sha_response():
+    engine, state = make_game()
+    source, target = state.players[0], state.players[1]
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    source.hand = [Card(id="test-nanman", name="nanmanruqin", suit="spade", rank="K")]
+    source.hand_count = 1
+    target.hand = [
+        Card(id="test-sha", name="sha", suit="spade", rank="7"),
+        Card(id="test-wuxie", name="wuxiekeji", suit="club", rank="Q"),
+    ]
+    target.hand_count = 2
+
+    engine.execute_action(state, "play_nanmanruqin")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "wuxie"
+    assert [action.action_id for action in engine.refresh_legal_actions(state)] == ["wuxie", "pass_response"]
+
+    engine.execute_action(state, "pass_response")
+    assert state.pending_response is not None
+    assert state.pending_response.type == "respond_sha"
+    assert "respond_sha" in [action.action_id for action in engine.refresh_legal_actions(state)]
+
+
+def test_juedou_target_without_sha_can_only_pass_response():
+    engine, state = make_game()
+    source, target = state.players[0], state.players[1]
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    source.hand = [Card(id="test-juedou", name="juedou", suit="diamond", rank="A")]
+    source.hand_count = 1
+
+    engine.execute_action(state, f"play_juedou:{target.id}")
+    action_ids = [action.action_id for action in engine.refresh_legal_actions(state)]
+    assert action_ids == ["pass_response"]
+
+
+def test_public_state_includes_distances_and_attack_ranges():
+    engine, state = make_game()
+    force_human_play(engine, state)
+    human = state.players[0]
+    target = state.players[2]
+    human.equipment.weapon = Card(id="test-weapon", name="qinggangjian", suit="spade", rank="6")
+
+    public = public_state_for_human(state)
+    distance = next(
+        item
+        for item in public["distances"]
+        if item["source_player_id"] == human.id and item["target_player_id"] == target.id
+    )
+    assert distance["distance"] >= 1
+    assert distance["attack_range"] == 2
+    assert distance["in_attack_range"] == (distance["distance"] <= 2)
+
+
+def test_jiedaosharen_transfers_weapon_to_source_when_target_declines_sha():
+    engine, state = make_game()
+    source, target, victim = state.players[0], state.players[1], state.players[2]
+    state.current_player_index = 0
+    state.phase = "play"
+    state.pending_response = None
+    for player in state.players:
+        player.hand = []
+        player.hand_count = 0
+    source.hand = [Card(id="test-jiedao", name="jiedaosharen", suit="club", rank="Q")]
+    source.hand_count = 1
+    target.equipment.weapon = Card(id="test-weapon", name="qinggangjian", suit="spade", rank="6")
+
+    engine.execute_action(state, f"play_jiedaosharen:{target.id}:{victim.id}")
+    assert target.equipment.weapon is None
+    assert any(card.id == "test-weapon" for card in source.hand)
+
+
+def test_shandian_deals_three_damage_on_hit():
+    engine, state = make_game()
+    player = state.players[0]
+    state.current_player_index = 0
+    state.pending_response = None
+    player.hp = 3
+    player.judgment_area = [Card(id="test-shandian", name="shandian", suit="heart", rank="Q")]
+    state.deck = [Card(id="judge-spade-2", name="sha", suit="spade", rank="2")]
+    state.discard_pile = []
+
+    engine.start_turn(state)
+    assert player.hp == 0
+    assert state.pending_response is not None
+    assert state.pending_response.type == "dying_tao"
+    assert any("受到 3 点雷电伤害" in event for event in state.recent_events)
+
+
 def test_illegal_action_is_rejected():
     engine, state = make_game()
     force_human_play(engine, state)
@@ -131,6 +470,17 @@ def test_public_state_reveals_all_roles_after_game_over():
     state.winner = "fan"
     public = public_state_for_human(state)
     assert all(player["role"] != "unknown" for player in public["players"])
+
+
+def test_recent_events_keeps_thirty_entries():
+    engine, state = make_game()
+    for index in range(35):
+        engine._event(state, f"事件 {index}")  # noqa: SLF001 - 这里验证日志裁剪边界
+
+    public = public_state_for_human(state)
+    assert len(state.recent_events) == 30
+    assert len(public["recent_events"]) == 30
+    assert public["recent_events"][0] == "事件 5"
 
 
 def test_ai_strategy_filters_zhong_sha_against_lord():
@@ -181,9 +531,28 @@ def test_ai_strategy_prefers_rebel_sha_against_lord():
     state.pending_response = None
     rebel.used_sha_this_turn = False
     rebel.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
+    rebel.equipment.weapon = Card(id="test-weapon", name="qinglongyanyuedao", suit="spade", rank="5")
 
     ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
     assert [action.action_id for action in ai_legal] == [f"play_sha:{lord.id}"]
+
+
+def test_ai_strategy_prefers_sha_before_other_attacks():
+    engine, state = make_game()
+    force_human_play(engine, state)
+    actor = state.players[0]
+    actor.is_human = False
+    actor.hand = [
+        Card(id="test-sha", name="sha", suit="spade", rank="7"),
+        Card(id="test-juedou", name="juedou", suit="diamond", rank="A"),
+    ]
+    actor.hand_count = len(actor.hand)
+    actor.used_sha_this_turn = False
+
+    ai_legal = engine.ai_legal_actions(state, actor, engine.refresh_legal_actions(state))
+    assert ai_legal
+    assert all(action.card_name == "sha" for action in ai_legal)
+    assert not any(action.action_id == "end_phase" for action in ai_legal)
 
 
 def test_ai_strategy_does_not_hide_loyalist_from_lord():
@@ -207,8 +576,11 @@ def test_ai_strategy_does_not_hide_loyalist_from_lord():
     lord.is_human = False
     lord.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
 
-    ai_legal = engine.ai_legal_actions(state, lord, engine.refresh_legal_actions(state))
-    assert any(action.action_id == f"play_sha:{loyalist.id}" for action in ai_legal)
+    legal = engine.refresh_legal_actions(state)
+    assert any(action.action_id == f"play_sha:{loyalist.id}" for action in legal)
+    ai_legal = engine.ai_legal_actions(state, lord, legal)
+    assert ai_legal
+    assert all(action.card_name == "sha" for action in ai_legal)
 
 
 def test_ai_strategy_does_not_hide_rebel_teammate_from_rebel_when_lord_unavailable():
@@ -232,8 +604,11 @@ def test_ai_strategy_does_not_hide_rebel_teammate_from_rebel_when_lord_unavailab
     rebel.used_sha_this_turn = False
     rebel.hand = [Card(id="test-sha", name="sha", suit="spade", rank="7")]
 
-    ai_legal = engine.ai_legal_actions(state, rebel, engine.refresh_legal_actions(state))
-    assert any(action.action_id == f"play_sha:{rebel_teammate.id}" for action in ai_legal)
+    legal = engine.refresh_legal_actions(state)
+    assert any(action.action_id == f"play_sha:{rebel_teammate.id}" for action in legal)
+    ai_legal = engine.ai_legal_actions(state, rebel, legal)
+    assert ai_legal
+    assert all(action.card_name == "sha" for action in ai_legal)
 
 
 def test_ai_strategy_responds_with_shan_when_available():
@@ -306,6 +681,13 @@ def test_ai_prompt_includes_strict_role_policy():
     assert payload["role_policy"]["forbidden"]
     assert "主公" in "".join(payload["role_policy"]["forbidden"])
     assert "unknown" in " ".join(payload["decision_guidance"])
+    assert "不要保守" in "".join(payload["aggressive_strategy"])
+    assert "决斗不受距离限制" in payload["card_rules"]["trick"]["juedou"]
+    assert "targeting_policy" in payload["card_rules"]
+    assert "response_policy" in payload["card_rules"]
+    assert "camp_win_strategy" in payload["card_rules"]
+    assert "action_priority" in payload["card_rules"]
+    assert "阵营赢" in "".join(payload["aggressive_strategy"])
 
 
 def test_lord_prompt_uses_inference_not_hidden_role_knowledge():

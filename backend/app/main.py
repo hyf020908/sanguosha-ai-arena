@@ -12,7 +12,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
-app = FastAPI(title="sanguosha-ai-arena", version="0.1.0")
+app = FastAPI(title="sanguosha-ai-arena", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,

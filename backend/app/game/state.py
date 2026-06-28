@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.game.rules import attack_range, distance_between, in_attack_range
 from app.models import GameState
 
 
@@ -23,8 +24,27 @@ def public_state_for_human(state: GameState) -> dict:
                 "hand": [card.model_dump() for card in player.hand] if player.id == human_id else [],
                 "hand_count": len(player.hand),
                 "used_sha_this_turn": player.used_sha_this_turn,
+                "equipment": player.equipment.model_dump(),
+                "judgment_area": [card.model_dump() for card in player.judgment_area],
             }
         )
+
+    distances: list[dict] = []
+    for source in state.players:
+        if not source.alive:
+            continue
+        for target in state.players:
+            if not target.alive or target.id == source.id:
+                continue
+            distances.append(
+                {
+                    "source_player_id": source.id,
+                    "target_player_id": target.id,
+                    "distance": distance_between(state.players, source, target),
+                    "attack_range": attack_range(source),
+                    "in_attack_range": in_attack_range(state.players, source, target),
+                }
+            )
 
     actor_is_human = False
     if state.pending_response:
@@ -42,7 +62,8 @@ def public_state_for_human(state: GameState) -> dict:
         "phase": state.phase,
         "pending_response": state.pending_response.model_dump() if state.pending_response else None,
         "round": state.round,
-        "recent_events": state.recent_events[-20:],
+        "recent_events": state.recent_events[-30:],
         "winner": state.winner,
+        "distances": distances,
         "legal_actions": [action.model_dump() for action in state.legal_actions] if actor_is_human else [],
     }

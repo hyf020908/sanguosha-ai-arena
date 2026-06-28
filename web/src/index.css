@@ -330,7 +330,7 @@ label {
 }
 
 .hand-card {
-  width: 92px;
+  width: 104px;
   min-height: 128px;
   border-radius: 8px;
   border: 1px solid rgba(147, 211, 224, 0.48);
@@ -350,8 +350,10 @@ label {
 .hand-card strong {
   font-family:
     "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi", "PingFang SC", serif;
-  font-size: 28px;
+  font-size: 24px;
   color: #093a47;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
 }
 
 .hand-card span {
@@ -371,17 +373,184 @@ label {
   border-top: 5px solid #00a889;
 }
 
-.event-log {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0 0;
-  padding-left: 20px;
-  color: #274c58;
+.hand-card.wuzhongshengyou,
+.hand-card.taoyuanjieyi,
+.hand-card.wugufengdeng {
+  border-top: 5px solid #1f9d55;
 }
 
-.event-log li::marker {
-  color: #00a7c7;
+.hand-card.guohechaiqiao,
+.hand-card.shunshouqianyang,
+.hand-card.jiedaosharen,
+.hand-card.juedou,
+.hand-card.nanmanruqin,
+.hand-card.wanjianqifa,
+.hand-card.wuxiekeji {
+  border-top: 5px solid #8b5cf6;
+}
+
+.hand-card.lebusishu,
+.hand-card.shandian {
+  border-top: 5px solid #f59e0b;
+}
+
+.zone-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.zone-row span {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(83, 194, 210, 0.22);
+  color: #355f6c;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 4px 7px;
+}
+
+.distance-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.distance-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.distance-table th,
+.distance-table td {
+  border: 1px solid rgba(83, 194, 210, 0.22);
+  padding: 8px 9px;
+  text-align: center;
+  color: #274c58;
+  font-size: 13px;
+}
+
+.distance-table th {
+  background: rgba(255, 255, 255, 0.52);
+  color: #083849;
   font-weight: 800;
+}
+
+.distance-table td span {
+  font-weight: 850;
+}
+
+.distance-table td small {
+  color: #63818b;
+}
+
+.distance-table .in-range {
+  background: rgba(215, 255, 241, 0.72);
+}
+
+.distance-table .out-range {
+  background: rgba(255, 245, 219, 0.66);
+}
+
+.distance-table .self-cell {
+  background: rgba(255, 255, 255, 0.38);
+  color: #8aa0a8;
+}
+
+.event-panel {
+  overflow: hidden;
+}
+
+.event-log {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #274c58;
+  font-family:
+    "FangSong", "STFangsong", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+}
+
+.event-log li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  border: 1px solid rgba(83, 194, 210, 0.22);
+  border-left: 4px solid rgba(0, 167, 199, 0.5);
+  border-radius: 8px;
+  padding: 9px 10px 9px 8px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.event-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(0, 167, 199, 0.12);
+  color: #007f93;
+  font-family: "Avenir Next", ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.event-text {
+  min-width: 0;
+  color: #244b58;
+  font-size: 15px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.event-player,
+.event-card,
+.event-action,
+.event-status {
+  display: inline;
+  border-radius: 5px;
+  padding: 1px 4px;
+  font-weight: 800;
+}
+
+.event-player {
+  background: rgba(0, 167, 199, 0.12);
+  color: #006f82;
+}
+
+.event-card {
+  background: rgba(139, 92, 246, 0.12);
+  color: #6040a8;
+}
+
+.event-action {
+  color: #0c6c5b;
+}
+
+.event-status {
+  background: rgba(255, 180, 82, 0.16);
+  color: #9b4a00;
+}
+
+.event-log li.event-danger {
+  border-left-color: rgba(220, 61, 75, 0.72);
+  background: rgba(255, 240, 240, 0.62);
+}
+
+.event-log li.event-success {
+  border-left-color: rgba(0, 168, 137, 0.72);
+  background: rgba(231, 255, 247, 0.62);
+}
+
+.event-log li.event-response {
+  border-left-color: rgba(139, 92, 246, 0.65);
+  background: rgba(246, 241, 255, 0.58);
 }
 
 .muted {

@@ -1,5 +1,6 @@
 import type { GameState } from '../types';
 import { ActionPanel } from './ActionPanel';
+import { DistancePanel } from './DistancePanel';
 import { EventLog } from './EventLog';
 import { HandCards } from './HandCards';
 import { PlayerPanel } from './PlayerPanel';
@@ -12,6 +13,7 @@ interface Props {
 }
 
 const phaseLabels: Record<GameState['phase'], string> = {
+  judge: '判定',
   draw: '摸牌',
   play: '出牌',
   discard: '弃牌',
@@ -48,9 +50,10 @@ export function GameBoard({ state, loading, onAction, onNewGame }: Props) {
       <div className="board-columns">
         <div>
           <HandCards cards={human?.hand ?? []} />
+          <DistancePanel state={state} />
           <ActionPanel actions={state.legal_actions} loading={loading} onAction={onAction} />
         </div>
-        <EventLog events={state.recent_events} />
+        <EventLog events={state.recent_events} players={state.players} />
       </div>
     </main>
   );

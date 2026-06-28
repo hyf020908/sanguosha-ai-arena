@@ -6,8 +6,41 @@ from pydantic import BaseModel, Field, field_validator
 
 
 Role = Literal["zhu", "zhong", "fan", "nei"]
-Phase = Literal["draw", "play", "discard", "response", "game_over"]
-CardName = Literal["sha", "shan", "tao"]
+Phase = Literal["judge", "draw", "play", "discard", "response", "game_over"]
+CardName = Literal[
+    "sha",
+    "shan",
+    "tao",
+    "wuzhongshengyou",
+    "guohechaiqiao",
+    "shunshouqianyang",
+    "jiedaosharen",
+    "nanmanruqin",
+    "wanjianqifa",
+    "taoyuanjieyi",
+    "wugufengdeng",
+    "juedou",
+    "wuxiekeji",
+    "lebusishu",
+    "shandian",
+    "zhugeliannu",
+    "qinggangjian",
+    "cixiongshuanggujian",
+    "hanbingjian",
+    "qinglongyanyuedao",
+    "zhangbashemao",
+    "guanshifu",
+    "fangtianhuaji",
+    "qilingong",
+    "baguazhen",
+    "renwangdun",
+    "jueying",
+    "dilu",
+    "zhuahuangfeidian",
+    "dawan",
+    "chitu",
+    "zixing",
+]
 
 
 class AIConfig(BaseModel):
@@ -31,17 +64,34 @@ class Action(BaseModel):
     card_id: str | None = None
     card_name: CardName | None = None
     target_player_id: str | None = None
+    secondary_target_player_id: str | None = None
     target_card_ids: list[str] | None = None
     target_card_names: list[CardName] | None = None
     label: str
 
 
 class PendingResponse(BaseModel):
-    type: Literal["respond_shan", "dying_tao", "discard"]
+    type: Literal["respond_shan", "respond_sha", "dying_tao", "discard", "wuxie"]
     player_id: str
     source_player_id: str | None = None
+    origin_player_id: str | None = None
+    target_player_id: str | None = None
+    secondary_target_player_id: str | None = None
     card_id: str | None = None
+    card_name: CardName | None = None
+    effect_type: str | None = None
+    target_player_ids: list[str] | None = None
+    remaining_player_ids: list[str] | None = None
+    queue_player_ids: list[str] | None = None
+    responded_player_ids: list[str] | None = None
     required_count: int | None = None
+
+
+class Equipment(BaseModel):
+    weapon: Card | None = None
+    armor: Card | None = None
+    attack_horse: Card | None = None
+    defense_horse: Card | None = None
 
 
 class Player(BaseModel):
@@ -56,6 +106,8 @@ class Player(BaseModel):
     hand: list[Card] = Field(default_factory=list)
     hand_count: int = 0
     used_sha_this_turn: bool = False
+    equipment: Equipment = Field(default_factory=Equipment)
+    judgment_area: list[Card] = Field(default_factory=list)
     ai_config: AIConfig | None = None
 
 

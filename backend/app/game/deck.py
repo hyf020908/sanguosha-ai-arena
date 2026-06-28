@@ -1,23 +1,127 @@
 from __future__ import annotations
 
 import random
-from itertools import cycle
 
-from app.models import Card
+from app.models import Card, CardName
 
 
-SUITS = ["spade", "heart", "club", "diamond"]
-RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+DECK_SPEC: list[tuple[str, str, CardName]] = [
+    ("spade", "A", "shandian"),
+    ("spade", "A", "juedou"),
+    ("spade", "2", "baguazhen"),
+    ("spade", "2", "cixiongshuanggujian"),
+    ("spade", "2", "hanbingjian"),
+    ("spade", "3", "guohechaiqiao"),
+    ("spade", "3", "shunshouqianyang"),
+    ("spade", "4", "guohechaiqiao"),
+    ("spade", "4", "shunshouqianyang"),
+    ("spade", "5", "qinglongyanyuedao"),
+    ("spade", "5", "jueying"),
+    ("spade", "6", "lebusishu"),
+    ("spade", "6", "qinggangjian"),
+    ("spade", "7", "nanmanruqin"),
+    ("spade", "7", "sha"),
+    ("spade", "8", "sha"),
+    ("spade", "8", "sha"),
+    ("spade", "9", "sha"),
+    ("spade", "9", "sha"),
+    ("spade", "10", "sha"),
+    ("spade", "10", "sha"),
+    ("spade", "J", "wuxiekeji"),
+    ("spade", "J", "shunshouqianyang"),
+    ("spade", "Q", "zhangbashemao"),
+    ("spade", "Q", "guohechaiqiao"),
+    ("spade", "K", "dawan"),
+    ("spade", "K", "nanmanruqin"),
+    ("club", "A", "zhugeliannu"),
+    ("club", "A", "juedou"),
+    ("club", "2", "baguazhen"),
+    ("club", "2", "sha"),
+    ("club", "2", "renwangdun"),
+    ("club", "3", "guohechaiqiao"),
+    ("club", "3", "sha"),
+    ("club", "4", "guohechaiqiao"),
+    ("club", "4", "sha"),
+    ("club", "5", "dilu"),
+    ("club", "5", "sha"),
+    ("club", "6", "lebusishu"),
+    ("club", "6", "sha"),
+    ("club", "7", "nanmanruqin"),
+    ("club", "7", "sha"),
+    ("club", "8", "sha"),
+    ("club", "8", "sha"),
+    ("club", "9", "sha"),
+    ("club", "9", "sha"),
+    ("club", "10", "sha"),
+    ("club", "10", "sha"),
+    ("club", "J", "sha"),
+    ("club", "J", "sha"),
+    ("club", "Q", "jiedaosharen"),
+    ("club", "Q", "wuxiekeji"),
+    ("club", "K", "jiedaosharen"),
+    ("club", "K", "wuxiekeji"),
+    ("heart", "A", "taoyuanjieyi"),
+    ("heart", "A", "wanjianqifa"),
+    ("heart", "2", "shan"),
+    ("heart", "2", "shan"),
+    ("heart", "3", "tao"),
+    ("heart", "3", "wugufengdeng"),
+    ("heart", "4", "tao"),
+    ("heart", "4", "wugufengdeng"),
+    ("heart", "5", "qilingong"),
+    ("heart", "5", "chitu"),
+    ("heart", "6", "tao"),
+    ("heart", "6", "lebusishu"),
+    ("heart", "7", "tao"),
+    ("heart", "7", "wuzhongshengyou"),
+    ("heart", "8", "tao"),
+    ("heart", "8", "wuzhongshengyou"),
+    ("heart", "9", "tao"),
+    ("heart", "9", "wuzhongshengyou"),
+    ("heart", "10", "sha"),
+    ("heart", "10", "sha"),
+    ("heart", "J", "sha"),
+    ("heart", "J", "wuzhongshengyou"),
+    ("heart", "Q", "tao"),
+    ("heart", "Q", "guohechaiqiao"),
+    ("heart", "Q", "shandian"),
+    ("heart", "K", "zhuahuangfeidian"),
+    ("heart", "K", "shan"),
+    ("diamond", "A", "zhugeliannu"),
+    ("diamond", "A", "juedou"),
+    ("diamond", "2", "shan"),
+    ("diamond", "2", "shan"),
+    ("diamond", "3", "shan"),
+    ("diamond", "3", "shunshouqianyang"),
+    ("diamond", "4", "shan"),
+    ("diamond", "4", "shunshouqianyang"),
+    ("diamond", "5", "shan"),
+    ("diamond", "5", "guanshifu"),
+    ("diamond", "6", "shan"),
+    ("diamond", "6", "sha"),
+    ("diamond", "7", "shan"),
+    ("diamond", "7", "sha"),
+    ("diamond", "8", "shan"),
+    ("diamond", "8", "sha"),
+    ("diamond", "9", "shan"),
+    ("diamond", "9", "sha"),
+    ("diamond", "10", "shan"),
+    ("diamond", "10", "sha"),
+    ("diamond", "J", "shan"),
+    ("diamond", "J", "shan"),
+    ("diamond", "Q", "tao"),
+    ("diamond", "Q", "fangtianhuaji"),
+    ("diamond", "Q", "wuxiekeji"),
+    ("diamond", "K", "sha"),
+    ("diamond", "K", "zixing"),
+]
 
 
 def build_deck(rng: random.Random) -> list[Card]:
-    """生成 v0.1 牌堆；牌面字段只用于展示，不参与规则。"""
-    names = ["sha"] * 30 + ["shan"] * 15 + ["tao"] * 10
-    suit_rank = cycle((suit, rank) for suit in SUITS for rank in RANKS)
-    cards: list[Card] = []
-    for index, name in enumerate(names):
-        suit, rank = next(suit_rank)
-        cards.append(Card(id=f"c{index + 1}", name=name, suit=suit, rank=rank))
+    """生成 v0.2 标准版 108 张游戏牌。"""
+    cards = [
+        Card(id=f"c{index + 1}", name=name, suit=suit, rank=rank)
+        for index, (suit, rank, name) in enumerate(DECK_SPEC)
+    ]
     rng.shuffle(cards)
     return cards
-

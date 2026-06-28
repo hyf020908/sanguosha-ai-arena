@@ -1,10 +1,5 @@
 import type { Card } from '../types';
-
-const cardLabels: Record<Card['name'], string> = {
-  sha: '杀',
-  shan: '闪',
-  tao: '桃'
-};
+import { cardLabels } from '../cardLabels';
 
 export function HandCards({ cards }: { cards: Card[] }) {
   return (
@@ -24,4 +19,3 @@ export function HandCards({ cards }: { cards: Card[] }) {
     </section>
   );
 }
-

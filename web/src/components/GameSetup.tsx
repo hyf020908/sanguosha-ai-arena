@@ -46,9 +46,9 @@ export function GameSetup({ onCreate, loading }: Props) {
   return (
     <section className="setup-shell">
       <div className="setup-header">
-        <p className="eyebrow">v0.1 简化身份局</p>
+        <p className="eyebrow">v0.2 标准牌型身份局</p>
         <h1>sanguosha-ai-arena</h1>
-        <p>人与 AI 同桌进行一局只包含杀、闪、桃的简化身份局。</p>
+        <p>人与 AI 同桌进行一局包含基础牌、锦囊牌、装备牌和距离规则的身份局。</p>
       </div>
 
       <div className="setup-grid">
